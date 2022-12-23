@@ -68,27 +68,26 @@ namespace AccountingEntry.Domain.Services
 
 		public async Task<string> SaveDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
 		{
-			List<T85Documento> listDocuments = (List<T85Documento>) await _t85Documento.Query()
+			var maxNumeroDoc = (int)await _t85Documento.Query()
 				.Where(d => d.T85CodCia.Equals(registryInWareHouse.CodCia) &&
-					d.T85Agno.Equals(registryInWareHouse.Fecha.Date.Year) && d.T85CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc))
-				.OrderByDescending(od => od.T85NumeroDoc)
-				.SelectAsync();
+					d.T85Agno == (short)registryInWareHouse.Fecha.Date.Year && d.T85CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc))
+				.MaxAsync(d => d.T85NumeroDoc);
 
-			int documentNumber = listDocuments.Count > 0 ? listDocuments[0].T85NumeroDoc + 1 : 1;
+			var documentNumber = maxNumeroDoc + 1;
 			T85Documento document = SetModelDocument(registryInWareHouse, documentNumber);
 			await _t85Documento.Add(document);
 			await _unitOfWork.SaveChangesAsync();
 
-			await SaveAuditRegistries(document, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud);
+			await SaveAuditRegistries(document, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 0);
 			await SaveMovements(registryInWareHouse, documentNumber);
 
 			return MessagesError(0, "");
 		}
 
-		private async Task<bool> SaveAuditRegistries(T85Documento document, int IdUsr, string Table, string ComputerAud)
+		private async Task<bool> SaveAuditRegistries(T85Documento document, int IdUsr, string Table, string ComputerAud, short TransAud)
 		{
 			Sypsysaudit audit = new Sypsysaudit();
-			audit = SetModelAudit(document, IdUsr, Table, ComputerAud);
+			audit = SetModelAudit(document, IdUsr, Table, ComputerAud, TransAud);
 
 			await _sypsysauditRepository.Add(audit);
 			await _unitOfWork.SaveChangesAsync();
@@ -101,13 +100,12 @@ namespace AccountingEntry.Domain.Services
 			List<SetTotals> movementsByAccount = new List<SetTotals>();
 			foreach (var cuenta in registryInWareHouse.Cuentas)
 			{
-				var listMovements = await _t87Movimiento.Query()
+				var maxNumeroDoc = (int)await _t87Movimiento.Query()
 					.Where(m => m.T87CodCia.Equals(registryInWareHouse.CodCia) && m.T87Agno == (short)registryInWareHouse.Fecha.Date.Year &&
 						m.T87CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc) && m.T87NumeroDoc == documentNumber && m.T87CodCta.Equals(cuenta.CodCta))
-					.SelectAsync();
-				listMovements = listMovements.OrderByDescending(om => om.T87ConsecCta).ToList();
+					.MaxAsync(m => m.T87ConsecCta);
 
-				T87Movimiento movement = SetModelMovement(registryInWareHouse, documentNumber, listMovements.Count() > 0 ? listMovements.First() : null, cuenta);
+				T87Movimiento movement = SetModelMovement(registryInWareHouse, documentNumber, maxNumeroDoc, cuenta);
 				await _t87Movimiento.Add(movement);
 				await _unitOfWork.SaveChangesAsync();
 				_t87Movimiento.Detach(movement);
@@ -392,7 +390,7 @@ namespace AccountingEntry.Domain.Services
 			return document;
 		}
 
-		private T87Movimiento SetModelMovement(RegistryInWareHouse registryInWareHouse, int documentNumber, T87Movimiento lastMovement, Account account)
+		private T87Movimiento SetModelMovement(RegistryInWareHouse registryInWareHouse, int documentNumber, int lastConsecCta, Account account)
 		{
 			T87Movimiento movement = new T87Movimiento();
 			movement.T87CodCia = registryInWareHouse.CodCia;
@@ -400,10 +398,10 @@ namespace AccountingEntry.Domain.Services
 			movement.T87CodTipoDoc = registryInWareHouse.CodTipoDoc;
 			movement.T87NumeroDoc = documentNumber;
 			movement.T87CodCta = account.CodCta;
-			movement.T87ConsecCta = lastMovement != null ? lastMovement.T87ConsecCta + 1 : 1;
+			movement.T87ConsecCta = lastConsecCta + 1;
 			movement.T87Fecha = registryInWareHouse.Fecha;
-			movement.T87CodCentro = account.requiresCostCenter ? registryInWareHouse.CodCentro : null;
-			movement.T87Nit = account.requiresPerson ? registryInWareHouse.Nit : null;
+			movement.T87CodCentro = account.requiresCostCenter ? registryInWareHouse.CodCentro : "";
+			movement.T87Nit = account.requiresPerson ? registryInWareHouse.Nit : "";
 			movement.T87Referencia = account.Referencia != null ? account.Referencia : "";
 			movement.T87Detalle = account.Detalle != null ? account.Detalle : "";
 			movement.T87CodTipoDocCruce = account.CodTipoDocCruce != null ? account.CodTipoDocCruce : "";
@@ -468,13 +466,13 @@ namespace AccountingEntry.Domain.Services
 		private decimal SetTotal(decimal valueExist, decimal valueNew)
 			=> valueExist + valueNew;
 
-		private Sypsysaudit SetModelAudit(T85Documento document, int idUsr, string TablaAud, string ComputerAud)
+		private Sypsysaudit SetModelAudit(T85Documento document, int idUsr, string TablaAud, string ComputerAud, short TransAud)
 		{
 			Sypsysaudit audit = new Sypsysaudit();
 			audit.FechaAud = DateTime.Now;
 			audit.IdUsr = idUsr;
 			audit.TablaAud = TablaAud;
-			audit.TransAud = 0; //TODO: Preguntar de donde puedo saber el numero de transacción a cual transacción hace referencia, ya que puede tener 0,1,2
+			audit.TransAud = TransAud;
 			audit.DescAud = document.T85CodCia + ":" + document.T85Agno + ":" + document.T85CodTipoDoc + ":" + document.T85NumeroDoc + ":" + 
 				document.T85Fecha.ToString("dd/M/yyyy") + ":" + document.T85Anulado + ":" + document.T85AppName + ":" + document.T85Concepto.Remove(50) + 
 				":" + ":" + document.T85NumeroDocAnul;

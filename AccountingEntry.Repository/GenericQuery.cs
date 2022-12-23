@@ -81,10 +81,25 @@ namespace AccountingEntry.Repository
             return this;
         }
 
+        public virtual async Task<bool> AnyAsync()
+            => await _query.AnyAsync();
+
+        public virtual async Task<object> MaxAsync(Expression<Func<TEntity, object>> keySelector)
+        {
+			var itemsExist = await _query.AnyAsync();
+            if(itemsExist)
+			{
+			    var max = await _query.MaxAsync(keySelector);
+                return max;
+			}
+
+            return 0;
+        }
+
         private IGenericQuery<TEntity> Set(Action<GenericQuery<TEntity>> setParameter)
         {
             setParameter(this);
             return this;
         }
-    }
+	}
 }

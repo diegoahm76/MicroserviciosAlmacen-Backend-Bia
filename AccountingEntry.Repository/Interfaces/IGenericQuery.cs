@@ -17,5 +17,7 @@ namespace AccountingEntry.Repository.Interfaces
         Task<IEnumerable<TEntity>> SelectAsync(CancellationToken cancellationToken = default);
         Task<int> CountAsync();
         Task<TEntity> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate);
-    }
+        Task<bool> AnyAsync();
+		Task<object> MaxAsync(Expression<Func<TEntity, object>> keySelector);
+	}
 }
