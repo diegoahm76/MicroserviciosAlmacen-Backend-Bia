@@ -29,10 +29,22 @@ namespace AccountingEntry.API.Controllers
 		/// <returns></returns>
 		[Route("AccountingSeat")]
 		[HttpPost]
-		public async Task<string> AccountingSeat(RegistryInWareHouseRequest registryInWareHouseRequest)
+		public async Task<IActionResult> AccountingSeat(RegistryInWareHouseRequest registryInWareHouseRequest)
 		{
-			var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
-			return await _accountingEntryService.AccountingSeat(registryInWareHouse);
+			try
+			{
+				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
+				var document = await _accountingEntryService.AccountingSeat(registryInWareHouse);
+				var documentResponse = _mapper.Map<CreateDocument>(document);
+				return Ok(documentResponse);
+			}
+			catch(Exception e)
+			{
+				if (e is ApplicationException)
+					return BadRequest(e.Message);
+				else
+					return BadRequest(e);
+			}
 		}
 	}
 }

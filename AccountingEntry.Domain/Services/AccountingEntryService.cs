@@ -15,6 +15,8 @@ namespace AccountingEntry.Domain.Services
 		private readonly IGenericRepository<Registry> _registryRepository;
 		private readonly IGenericRepository<Sypsysaudit> _sypsysauditRepository;
 		private readonly IGenericRepository<SypsysUsers> _sypsysUsersRepository;
+		private readonly IGenericRepository<SysApplication> _sysApplicationRepository;
+		private readonly IGenericRepository<T01Cia> _t01CiaRepository;
 		private readonly IGenericRepository<T03Tercero> _t03TerceroRepository;
 		private readonly IGenericRepository<T80Cuenta> _t80CuentaRepository;
 		private readonly IGenericRepository<T84CentroCosto> _t84CentroCostoRepository;
@@ -30,6 +32,8 @@ namespace AccountingEntry.Domain.Services
 		public AccountingEntryService(IGenericRepository<Registry> registryRepository,
 			IGenericRepository<Sypsysaudit> sypsysauditRepository,
 			IGenericRepository<SypsysUsers> sypsysUsersRepository,
+			IGenericRepository<SysApplication> sysApplicationRepository,
+			IGenericRepository<T01Cia> t01CiaRepository,
 			IGenericRepository<T03Tercero> t03TerceroRepository,
 			IGenericRepository<T80Cuenta> t80CuentaRepository,
 			IGenericRepository<T84CentroCosto> t84CentroCostoRepository,
@@ -44,6 +48,8 @@ namespace AccountingEntry.Domain.Services
 			_registryRepository = registryRepository;
 			_sypsysauditRepository = sypsysauditRepository;
 			_sypsysUsersRepository = sypsysUsersRepository;
+			_sysApplicationRepository = sysApplicationRepository;
+			_t01CiaRepository = t01CiaRepository;
 			_t03TerceroRepository = t03TerceroRepository;
 			_t80CuentaRepository = t80CuentaRepository;
 			_t84CentroCostoRepository = t84CentroCostoRepository;
@@ -56,17 +62,20 @@ namespace AccountingEntry.Domain.Services
 			_unitOfWork = unitOfWork;
 			accounts = new List<T80Cuenta>();
 		}
-		public async Task<string> AccountingSeat(RegistryInWareHouse registryInWareHouse)
+		public async Task<T85Documento> AccountingSeat(RegistryInWareHouse registryInWareHouse)
 		{
 			string messageTransaction = await ValidationsBeforeSaveDocument(registryInWareHouse);
 			if(messageTransaction == "OK")
 			{
-				messageTransaction = await SaveDocumentAndMovement(registryInWareHouse);
+				T85Documento createDocument = await SaveDocumentAndMovement(registryInWareHouse);
+				return createDocument;
+			}else
+			{
+				throw new ApplicationException(messageTransaction);
 			}
-			return messageTransaction;
 		}
 
-		public async Task<string> SaveDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
+		public async Task<T85Documento> SaveDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
 		{
 			var maxNumeroDoc = (int)await _t85Documento.Query()
 				.Where(d => d.T85CodCia.Equals(registryInWareHouse.CodCia) &&
@@ -81,7 +90,7 @@ namespace AccountingEntry.Domain.Services
 			await SaveAuditRegistries(document, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 0);
 			await SaveMovements(registryInWareHouse, documentNumber);
 
-			return MessagesError(0, "");
+			return document;
 		}
 
 		private async Task<bool> SaveAuditRegistries(T85Documento document, int IdUsr, string Table, string ComputerAud, short TransAud)
@@ -246,20 +255,27 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<string> ValidationsBeforeSaveDocument(RegistryInWareHouse registryInWareHouse)
 		{
-			string messageTransaction = "OK";
-			messageTransaction = ValidateFieldsRequired(registryInWareHouse);
+			string messageTransaction = ValidateFieldsRequired(registryInWareHouse);
 			if(messageTransaction == "OK")
 			{
-				messageTransaction = await ValidatePeriodLock(registryInWareHouse.CodCia, registryInWareHouse.Fecha.Date);
+				messageTransaction = await ValidateCompany(registryInWareHouse.CodCia);
 				if (messageTransaction == "OK")
 				{
-					messageTransaction = registryInWareHouse.Cuentas.Count > 1 ? await ValidateAccountByDateAndCompany(registryInWareHouse) : MessagesError(3, "");
-					if (messageTransaction == "OK")
+					messageTransaction = await ValidateApplicationName(registryInWareHouse.AppName);
+					if(messageTransaction == "OK")
 					{
-						messageTransaction = await ValidateDocumentTypeCode(registryInWareHouse.CodTipoDoc, registryInWareHouse.CodCia);
-						if(messageTransaction == "OK")
+						messageTransaction = await ValidatePeriodLock(registryInWareHouse.CodCia, registryInWareHouse.Fecha.Date);
+						if (messageTransaction == "OK")
 						{
-							messageTransaction = await ValidateUser(registryInWareHouse.IdUsr);
+							messageTransaction = registryInWareHouse.Cuentas.Count > 1 ? await ValidateAccountByDateAndCompany(registryInWareHouse) : MessagesError(3, "");
+							if (messageTransaction == "OK")
+							{
+								messageTransaction = await ValidateDocumentTypeCode(registryInWareHouse.CodTipoDoc, registryInWareHouse.CodCia);
+								if(messageTransaction == "OK")
+								{
+									messageTransaction = await ValidateUser(registryInWareHouse.IdUsr);
+								}
+							}
 						}
 					}
 				}
@@ -268,9 +284,21 @@ namespace AccountingEntry.Domain.Services
 			return messageTransaction;
 		}
 
+		private async Task<string> ValidateCompany(string CodCia)
+		{
+			T01Cia cia = await _t01CiaRepository.Query().FirstOrDefaultAsync(c => c.T01CodCia.Equals(CodCia));
+			return cia != null ? MessagesError(0, "") : MessagesError(13, "");
+		}
+
+		private async Task<string> ValidateApplicationName(string appName)
+		{
+			SysApplication application = await _sysApplicationRepository.Query().FirstOrDefaultAsync(a => a.AppName.Equals(appName));
+			return application != null ? MessagesError(0, "") : MessagesError(14, "");
+		}
 		private async Task<string> ValidatePeriodLock(string CodCia, DateTime Fecha)
 		{
-			string nameRegistryFilter = "COMPANIAS" + @"\" + CodCia + @"\" + Fecha.Year + @"\" + "BLOQUEOS" + @"\" + Fecha.Month + @"\";
+			string mes = Fecha.Month < 10 ? '0' + Fecha.Month.ToString() : Fecha.Month.ToString();
+			string nameRegistryFilter = "COMPANIAS" + @"\" + CodCia + @"\" + Fecha.Year + @"\" + "BLOQUEOS" + @"\" + mes + @"\";
 			Registry registry = await _registryRepository.Query().FirstOrDefaultAsync(r => r.Nombre.Equals(nameRegistryFilter));
 			if(registry != null) { return registry.Valor.Equals("0") ? MessagesError(0, "") : MessagesError(1, ""); }
 			return MessagesError(2, "");
@@ -481,7 +509,7 @@ namespace AccountingEntry.Domain.Services
 			return audit;
 		}
 
-		private string MessagesError(int codError, string fielsNames)
+		private string MessagesError(int codError, string fieldNames)
 		{
 			string error = "";
 			switch(codError)
@@ -523,8 +551,15 @@ namespace AccountingEntry.Domain.Services
 					error = "El usuario no existe.";
 					break;
 				case 12:
-					error = "Los campos " + fielsNames + " son requeridos.";
+					error = "Los campos " + fieldNames + " son requeridos.";
 					break;
+				case 13:
+					error = "La compañia no existe.";
+					break;
+				case 14:
+					error = "El nombre de la aplicación no existe.";
+					break;
+
 			}
 			return error;
 		}

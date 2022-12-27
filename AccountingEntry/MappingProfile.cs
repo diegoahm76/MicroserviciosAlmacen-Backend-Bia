@@ -1,4 +1,5 @@
 ﻿using AccountingEntry.API.BindingModel;
+using AccountingEntry.Domain.Model;
 using AccountingEntry.Domain.Model.ModelQuery;
 using AutoMapper;
 using System;
@@ -14,6 +15,7 @@ namespace AccountingEntry.API
 		{
 			CreateMap<RegistryInWareHouseRequest, RegistryInWareHouse>().ReverseMap();
 			CreateMap<AccountRequest, Account>().ReverseMap();
+			CreateMap<T85Documento, CreateDocument>().ReverseMap();
 		}
 	}
 }

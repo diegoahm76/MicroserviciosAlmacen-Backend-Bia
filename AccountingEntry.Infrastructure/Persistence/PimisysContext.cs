@@ -11,6 +11,8 @@ namespace AccountingEntry.Infrastructure.Persistence
 		public DbSet<Registry> REGISTRY { get; set; }
 		public DbSet<Sypsysaudit> SYPSYSAUDIT { get; set; }
 		public DbSet<SypsysUsers> SYPSYSUSERS { get; set; }
+		public DbSet<SysApplication> SYSAPPLICATION { get; set; }
+		public DbSet<T01Cia> T01CIA { get; set; }
 		public DbSet<T80Cuenta> T80CUENTA { get; set; }
 		public DbSet<T84CentroCosto> T84CENTROCOSTO { get; set; }
 		public DbSet<T03Tercero> T03TERCERO { get; set; }
