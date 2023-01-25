@@ -12,7 +12,5 @@ namespace AccountingEntry.Domain.Model.ModelQuery
 		public decimal ValorBase { get; set; }
 		public decimal ValorDebito { get; set; }
 		public decimal ValorCredito { get; set; }
-		public bool requiresCostCenter { get; set; }
-		public bool requiresPerson { get; set; }
 	}
 }

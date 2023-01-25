@@ -3,7 +3,6 @@ using AccountingEntry.Domain.Model.ModelQuery;
 using AccountingEntry.Domain.Services.Interfaces;
 using AccountingEntry.Repository.Interfaces;
 using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Internal;
 using System;
 using System.Collections.Generic;
@@ -92,9 +91,8 @@ namespace AccountingEntry.Domain.Services
 		public async Task<T85Documento> UpdateDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
 		{
 			T85Documento documentUpdate = SetModelDocument(registryInWareHouse);
-			//await UpdateT85Documento(documentUpdate);
-
-			//await SaveAuditRegistries(documentUpdate, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 1);
+			await UpdateT85Documento(documentUpdate);
+			await SaveAuditRegistries(documentUpdate, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 1);
 			await UpdateMovements(registryInWareHouse);
 
 			return documentUpdate;
@@ -395,38 +393,39 @@ namespace AccountingEntry.Domain.Services
 			string message = "OK";
 			foreach (var cuenta in registryInWareHouse.Cuentas)
 			{
-				T80Cuenta account = await _t80CuentaRepository.Query().FirstOrDefaultAsync(c => c.T80CodCta.Equals(cuenta.CodCta) &&
-				c.T80CodCia.Equals(registryInWareHouse.CodCia) && c.T80Agno == registryInWareHouse.FechaActual.Date.Year);
-				if (account != null)
+				if(!accounts.Exists(ac => ac.T80CodCta.Equals(cuenta.CodCta)))
 				{
-					if (account.T80Movimiento.Equals("S"))
+					T80Cuenta account = await _t80CuentaRepository.Query().FirstOrDefaultAsync(c => c.T80CodCta.Equals(cuenta.CodCta) &&
+					c.T80CodCia.Equals(registryInWareHouse.CodCia) && c.T80Agno == registryInWareHouse.FechaActual.Date.Year);
+					if (account != null)
 					{
-						if (account.T80CentroCosto.Equals("S"))
+						if (account.T80Movimiento.Equals("S"))
 						{
-							cuenta.requiresCostCenter = true;
-							message = await ValidateCostCenter(registryInWareHouse.CodCia, registryInWareHouse.CodCentro);
-						}
+							if (account.T80CentroCosto.Equals("S"))
+							{
+								message = await ValidateCostCenter(registryInWareHouse.CodCia, registryInWareHouse.CodCentro);
+							}
 
-						if (account.T80Tercero.Equals("S") && message.Equals("OK"))
+							if (account.T80Tercero.Equals("S") && message.Equals("OK"))
+							{
+								message = await ValidatePerson(registryInWareHouse.Nit);
+							}
+						}
+						else
 						{
-							cuenta.requiresPerson = true;
-							message = await ValidatePerson(registryInWareHouse.Nit);
+							message = MessagesError(5, "");
 						}
 					}
 					else
 					{
-						message = MessagesError(5, "");
+						message = MessagesError(4, "");
 					}
-				}
-				else
-				{
-					message = MessagesError(4, "");
-				}
 
-				if (!message.Equals("OK"))
-					break;
+					if (!message.Equals("OK"))
+						break;
 
-				accounts.Add(account);
+					accounts.Add(account);
+				}
 			}
 			
 			return message;
@@ -493,7 +492,6 @@ namespace AccountingEntry.Domain.Services
 				int loop = 0;
 				foreach (Account cuenta in cuentas) {
 					fieldNames = cuenta.CodCta == null ? fieldNames + ", CodCta en la posición " + loop + " de Cuentas" : fieldNames;
-					//fieldNames = cuenta.ConsecCta == 0 && !isCreate ? fieldNames + ", ConsecCta en la posición " + loop + " de Cuentas" : fieldNames;
 					fieldNames = cuenta.Detalle == null ? fieldNames + ", Detalle en la posición " + loop + " de Cuentas" : fieldNames;
 					fieldNames = cuenta.ValorDebito == 0 && cuenta.ValorCredito == 0 ? fieldNames + ", ValorDebito o ValorCredito en la posición " + loop + " de Cuentas" : fieldNames;
 					loop++;
@@ -528,6 +526,7 @@ namespace AccountingEntry.Domain.Services
 
 		private T87Movimiento SetModelMovement(RegistryInWareHouse registryInWareHouse, int documentNumber, int lastConsecCta, Account account)
 		{
+			T80Cuenta accountObject = accounts.FirstOrDefault(ac => ac.T80CodCta.Equals(account.CodCta));
 			T87Movimiento movement = new T87Movimiento();
 			movement.T87CodCia = registryInWareHouse.CodCia;
 			movement.T87Agno = (short)registryInWareHouse.FechaActual.Date.Year;
@@ -536,8 +535,8 @@ namespace AccountingEntry.Domain.Services
 			movement.T87CodCta = account.CodCta;
 			movement.T87ConsecCta = lastConsecCta + 1;
 			movement.T87Fecha = registryInWareHouse.FechaActual;
-			movement.T87CodCentro = account.requiresCostCenter ? registryInWareHouse.CodCentro : "";
-			movement.T87Nit = account.requiresPerson ? registryInWareHouse.Nit : "";
+			movement.T87CodCentro = accountObject.T80CentroCosto.Equals("S") ? registryInWareHouse.CodCentro : "";
+			movement.T87Nit = accountObject.T80Tercero.Equals("S") ? registryInWareHouse.Nit : "";
 			movement.T87Referencia = account.Referencia != null ? account.Referencia : "";
 			movement.T87Detalle = account.Detalle != null ? account.Detalle : "";
 			movement.T87CodTipoDocCruce = account.CodTipoDocCruce != null ? account.CodTipoDocCruce : "";
