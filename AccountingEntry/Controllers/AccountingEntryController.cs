@@ -27,18 +27,43 @@ namespace AccountingEntry.API.Controllers
 		/// Registra un asiento contable
 		/// </summary>
 		/// <returns></returns>
-		[Route("AccountingSeat")]
+		[Route("CreateAccountingSeat")]
 		[HttpPost]
-		public async Task<IActionResult> AccountingSeat(RegistryInWareHouseRequest registryInWareHouseRequest)
+		public async Task<IActionResult> CreateAccountingSeat(RegistryInWareHouseRequest registryInWareHouseRequest)
 		{
 			try
 			{
 				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
-				var document = await _accountingEntryService.AccountingSeat(registryInWareHouse);
+				var document = await _accountingEntryService.CreateOrUpdtaeAccountingSeat(registryInWareHouse, true);
 				var documentResponse = _mapper.Map<CreateDocument>(document);
 				return Ok(documentResponse);
 			}
-			catch(Exception e)
+			catch (Exception e)
+			{
+				if (e is ApplicationException)
+					return BadRequest(e.Message);
+				else
+					return BadRequest(e);
+			}
+		}
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="registryInWareHouseRequest"></param>
+		/// <returns></returns>
+		[Route("UpdateAccountingSeat")]
+		[HttpPost]
+		public async Task<IActionResult> UpdateAccountingSeat(RegistryInWareHouseRequest registryInWareHouseRequest)
+		{
+			try
+			{
+				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
+				var document = await _accountingEntryService.CreateOrUpdtaeAccountingSeat(registryInWareHouse, false);
+				var documentResponse = _mapper.Map<CreateDocument>(document);
+				return Ok(documentResponse);
+			}
+			catch (Exception e)
 			{
 				if (e is ApplicationException)
 					return BadRequest(e.Message);

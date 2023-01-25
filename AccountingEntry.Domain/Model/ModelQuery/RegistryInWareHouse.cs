@@ -7,7 +7,8 @@ namespace AccountingEntry.Domain.Model.ModelQuery
 	{
 		//Propiedades comunes en varias tablas
 		public string CodCia { get; set; }
-		public DateTime Fecha { get; set; }
+		public DateTime FechaActual { get; set; }
+		public DateTime FechaAnterior { get; set; }
 		public string CodCentro { get; set; }
 		public string Nit { get; set; }
 		public string CodTipoDoc { get; set; }
@@ -20,6 +21,7 @@ namespace AccountingEntry.Domain.Model.ModelQuery
 		public int NumeroDocAnul { get; set; }
 		public string CodTipoOrigenDoc { get; set; }
 		public int NumeroOrigenDoc { get; set; }
+		public int NumeroDoc { get; set; }
 		public string ReferenciaOrigenDoc { get; set; }
 
 		//Propiedades de la tabla T87MOVIMIENTO

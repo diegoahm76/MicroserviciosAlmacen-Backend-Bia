@@ -4,6 +4,7 @@ namespace AccountingEntry.Domain.Model.ModelQuery
 	public class Account
 	{
 		public string CodCta { get; set; }
+		public int ConsecCta { get; set; }
 		public string Referencia { get; set; }
 		public string Detalle { get; set; }
 		public string CodTipoDocCruce { get; set; }

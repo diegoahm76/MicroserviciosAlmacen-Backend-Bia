@@ -6,6 +6,6 @@ namespace AccountingEntry.Domain.Services.Interfaces
 {
 	public interface IAccountingEntryService
 	{
-		Task<T85Documento> AccountingSeat(RegistryInWareHouse registryInWareHouse);
+		Task<T85Documento> CreateOrUpdtaeAccountingSeat(RegistryInWareHouse registryInWareHouse, bool isCreate);
 	}
 }

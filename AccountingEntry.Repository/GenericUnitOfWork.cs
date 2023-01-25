@@ -17,7 +17,7 @@ namespace AccountingEntry.Repository
         public virtual async Task<int> SaveChangesAsync()
             => await Context.SaveChangesAsync();
 
-		public virtual async Task<int> ExecuteSqlRawAsync(string sql, IEnumerable<object> parameters)
-			=> await Context.Database.ExecuteSqlRawAsync(sql, parameters);
-	}
+        public virtual async Task<int> ExecuteSqlRawAsync(string sql, IEnumerable<object> parameters)
+            => await Context.Database.ExecuteSqlRawAsync(sql, parameters);
+    }
 }

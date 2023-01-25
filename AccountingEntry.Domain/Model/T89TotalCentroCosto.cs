@@ -9,8 +9,8 @@ namespace AccountingEntry.Domain.Model
 	{
         public string T89CodCia { get; set; }
         public short T89Agno { get; set; }
-        public string T89CodCta { get; set; }
         [Key]
+        public string T89CodCta { get; set; }
         public string T89CodCentro { get; set; }
         public Byte T89Mes { get; set; }
         public decimal T89MovDebitoLocal { get; set; }

@@ -34,15 +34,15 @@ namespace AccountingEntry.Domain.Model
         public string T03NitRel { get; set; }
         public string T03CodTipoRegimen { get; set; }
         public byte T03TipoSeparaNombre { get; set; }
-        public string T03CODDPTO { get; set; }
-        public string T03CODMUNICIPIO { get; set; }
+        public string T03CodDpto { get; set; }
+        public string T03CodMpio { get; set; }
         public string T03CODCGN { get; set; }
         public string T03CODCTACONTABCAUSA { get; set; }
         public string T03CODACTRUT1 { get; set; }
         public string T03CODACTRUT { get; set; }
         public string T03CODACTRUT3 { get; set; }
-        public string T03CODPAIS { get; set; }
-        public string T03TIPODOC { get; set; }
+        public string T03CodPais { get; set; }
+        public string T03CodTipoDocumId { get; set; }
         public string T03CODRECIPROCA { get; set; }
         public string T03EntAseguradora { get; set; }
         public string T03CODENTCHIP { get; set; }

@@ -7,14 +7,16 @@ namespace AccountingEntry.API.BindingModel
 	{
 		//Propiedades comunes en varias tablas
 		public string CodCia { get; set; } //REQUERIDO!
-		public DateTime Fecha { get; set; } //REQUERIDO!
-		public string CodCentro { get; set; }// Tener en cuenta que este campo puede estar dentro de la lista de cuentas en caso de que para cada una aplique un centro de costo
-		public string Nit { get; set; }// // Tener en cuenta que este campo puede estar dentro de la lista de cuentas en caso de que para cada una aplique un tercero
+		public DateTime FechaActual { get; set; } //REQUERIDO!
+		public DateTime FechaAnterior { get; set; } //REQUERIDO!
+		public string CodCentro { get; set; }
+		public string Nit { get; set; }
 		public string CodTipoDoc { get; set; } //REQUERIDO!
 
 		//Propiedades de la tabla T85DOCUMENTO
 		public string Concepto { get; set; } //REQUERIDO!
 		public string AppName { get; set; } //REQUERIDO!
+		public int NumeroDoc { get; set; } //REQUERIDO!.
 
 		//Propiedades de la tabla T87MOVIMIENTO
 		public List<AccountRequest> Cuentas { get; set; }

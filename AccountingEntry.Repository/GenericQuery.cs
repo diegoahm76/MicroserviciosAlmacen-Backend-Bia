@@ -30,7 +30,7 @@ namespace AccountingEntry.Repository
         }
 
         public virtual IGenericQuery<TEntity> Where(Expression<Func<TEntity, bool>> predicate)
-            => Set(q => q._query = q._query.Where(predicate));
+            => Set(q => q._query = q._query.AsNoTracking().Where(predicate));
 
         public virtual IGenericQuery<TEntity> Clean()
         {
@@ -71,7 +71,7 @@ namespace AccountingEntry.Repository
         }
 
         public virtual async Task<TEntity> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate)
-            => await _query.FirstOrDefaultAsync(predicate);
+            => await _query.AsNoTracking().FirstOrDefaultAsync(predicate);
 
         public virtual IGenericQuery<TEntity> ConditionalWhere(Func<bool> condition, Expression<Func<TEntity, bool>> predicate)
         {
