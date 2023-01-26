@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace AccountingEntry.API.BindingModel
 {
-	public class CreateDocument
+	public class DocumentTransaction
 	{
 		public string T85CodCia { get; set; }
 		public short T85Agno { get; set; }

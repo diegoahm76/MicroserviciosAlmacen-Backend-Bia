@@ -65,12 +65,39 @@ namespace AccountingEntry.Domain.Services
 		}
 		public async Task<T85Documento> CreateOrUpdtaeAccountingSeat(RegistryInWareHouse registryInWareHouse, bool isCreate)
 		{
-			string messageTransaction = await ValidationsBeforeSaveDocument(registryInWareHouse, isCreate);
+			string messageTransaction = await ValidationsBeforeSaveDocument(registryInWareHouse, isCreate, true);
 			if(messageTransaction == "OK")
 			{
 				T85Documento createOrUpdateDocument = isCreate ? await CreateDocumentAndMovement(registryInWareHouse) : await UpdateDocumentAndMovement(registryInWareHouse);
 				return createOrUpdateDocument;
 			}else
+			{
+				throw new ApplicationException(messageTransaction);
+			}
+		}
+
+		public async Task<T85Documento> DeleteAccountingSeat(RegistryInWareHouse registryInWareHouse)
+		{
+			registryInWareHouse.FechaAnterior = registryInWareHouse.FechaActual;
+			string messageTransaction = await ValidationsBeforeSaveDocument(registryInWareHouse, false, false);
+			if (messageTransaction == "OK")
+			{
+				T85Documento documentDB = await _t85Documento.Query()
+					.FirstOrDefaultAsync(d => d.T85CodCia.Equals(registryInWareHouse.CodCia) && d.T85Agno == registryInWareHouse.FechaActual.Date.Year &&
+						d.T85CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc) && d.T85NumeroDoc == registryInWareHouse.NumeroDoc);
+				if(documentDB != null)
+				{
+					await DeleteMovementsAndTotals(registryInWareHouse);
+					await DeleteDocument(registryInWareHouse);
+					await SaveAuditRegistries(documentDB, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 2);
+					return documentDB;	
+				}
+				else
+				{
+					throw new ApplicationException(MessagesError(15, ""));
+				}
+			}
+			else
 			{
 				throw new ApplicationException(messageTransaction);
 			}
@@ -93,7 +120,9 @@ namespace AccountingEntry.Domain.Services
 			T85Documento documentUpdate = SetModelDocument(registryInWareHouse);
 			await UpdateT85Documento(documentUpdate);
 			await SaveAuditRegistries(documentUpdate, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 1);
-			await UpdateMovements(registryInWareHouse);
+
+			await DeleteMovementsAndTotals(registryInWareHouse);
+			await SaveMovements(registryInWareHouse);
 
 			return documentUpdate;
 		}
@@ -137,32 +166,6 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
-		private async Task<bool> UpdateMovements(RegistryInWareHouse registryInWareHouse)
-		{
-			var movementsInDb = await _t87Movimiento.Query()
-					.Where(m => m.T87CodCia.Equals(registryInWareHouse.CodCia) && m.T87Agno == (short)registryInWareHouse.FechaAnterior.Date.Year &&
-						m.T87CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc) && m.T87NumeroDoc == registryInWareHouse.NumeroDoc)
-					.SelectAsync();
-			if(movementsInDb.Count() > 0)
-			{
-				List<string> codCtas = movementsInDb.Select(m => m.T87CodCta).ToList();
-				var accountsForMovements = await _t80CuentaRepository.Query()
-						.Where(c => c.T80CodCia.Equals(registryInWareHouse.CodCia) && c.T80Agno == registryInWareHouse.FechaActual.Date.Year)
-						.ConditionalWhere(() => codCtas.Any(), c => codCtas.Contains(c.T80CodCta))
-						.SelectAsync();
-				var listCounts = accountsForMovements.Concat(accounts);
-				accounts = listCounts.GroupBy(car => car.T80CodCta).Select(g => g.First()).ToList();
-				await DeleteMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior.Date.Year, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
-
-				List<SetTotals> movementsByAccount = movementsInDb.Select(m => new SetTotals { Movement = m, CodCta = m.T87CodCta }).ToList();
-				await SaveTotals(registryInWareHouse, movementsByAccount, true);
-			}
-
-			await SaveMovements(registryInWareHouse);
-
-			return true;
-		}
-
 		private async Task<T87Movimiento> AddMovement(RegistryInWareHouse registryInWareHouse, int documentNumber, int maxNumeroDoc, Account cuenta)
 		{
 			T87Movimiento movement = SetModelMovement(registryInWareHouse, documentNumber, maxNumeroDoc, cuenta);
@@ -187,6 +190,39 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
+		private async Task DeleteDocument(RegistryInWareHouse registryInWareHouse)
+		{
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
+			sqlParametersExtend.Add(new SqlParameter("@CodCia", registryInWareHouse.CodCia));
+			sqlParametersExtend.Add(new SqlParameter("@Agno", registryInWareHouse.FechaActual.Date.Year));
+			sqlParametersExtend.Add(new SqlParameter("@CodTipoDoc", registryInWareHouse.CodTipoDoc));
+			sqlParametersExtend.Add(new SqlParameter("@NumeroDoc", registryInWareHouse.NumeroDoc));
+			var updateString = "DELETE FROM [PIMISYS].[dbo].[T85DOCUMENTO] WHERE T85CodCia = @CodCia AND T85Agno = @Agno AND T85CodTipoDoc = @CodTipoDoc AND T85NumeroDoc = @NumeroDoc";
+			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
+		}
+
+		private async Task DeleteMovementsAndTotals(RegistryInWareHouse registryInWareHouse)
+		{
+			var movementsInDb = await _t87Movimiento.Query()
+					.Where(m => m.T87CodCia.Equals(registryInWareHouse.CodCia) && m.T87Agno == (short)registryInWareHouse.FechaAnterior.Date.Year &&
+						m.T87CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc) && m.T87NumeroDoc == registryInWareHouse.NumeroDoc)
+					.SelectAsync();
+			if (movementsInDb.Count() > 0)
+			{
+				List<string> codCtas = movementsInDb.Select(m => m.T87CodCta).ToList();
+				var accountsForMovements = await _t80CuentaRepository.Query()
+						.Where(c => c.T80CodCia.Equals(registryInWareHouse.CodCia) && c.T80Agno == registryInWareHouse.FechaAnterior.Date.Year)
+						.ConditionalWhere(() => codCtas.Any(), c => codCtas.Contains(c.T80CodCta))
+						.SelectAsync();
+				var listCounts = accountsForMovements.Concat(accounts);
+				accounts = listCounts.GroupBy(car => car.T80CodCta).Select(g => g.First()).ToList();
+				await DeleteMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior.Date.Year, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
+
+				List<SetTotals> movementsByAccount = movementsInDb.Select(m => new SetTotals { Movement = m, CodCta = m.T87CodCta }).ToList();
+				await SaveTotals(registryInWareHouse, movementsByAccount, true);
+			}
+		}
+
 		private async Task<bool> DeleteMovements(string codCia, int agno, string codTipoDoc, int numeroDoc)
 		{
 			bool isDelete = false;
@@ -204,29 +240,29 @@ namespace AccountingEntry.Domain.Services
 		{
 			foreach(var movementByAccount in movementsByAccount)
 			{
-				int mes = isSubtract ? registryInWareHouse.FechaAnterior.Date.Month : registryInWareHouse.FechaActual.Date.Month;
-				await SaveTotalAccount(registryInWareHouse, movementByAccount.Movement, movementByAccount.CodCta, isSubtract, mes);
+				DateTime fecha = isSubtract ? registryInWareHouse.FechaAnterior : registryInWareHouse.FechaActual;
+				await SaveTotalAccount(registryInWareHouse, movementByAccount.Movement, movementByAccount.CodCta, isSubtract, fecha);
 
 				T80Cuenta account = accounts.Find(acc => acc.T80CodCta == movementByAccount.CodCta);
 				if (account.T80CentroCosto.Equals("S"))
 				{
-					await SaveTotalCostCenter(registryInWareHouse, movementByAccount.Movement, movementByAccount.CodCta, isSubtract, mes);
+					await SaveTotalCostCenter(registryInWareHouse, movementByAccount.Movement, movementByAccount.CodCta, isSubtract, fecha);
 				}
 
 				if (account.T80Tercero.Equals("S"))
 				{
-					await SaveTotalPerson(registryInWareHouse, movementByAccount.Movement, movementByAccount.CodCta, isSubtract, mes);
+					await SaveTotalPerson(registryInWareHouse, movementByAccount.Movement, movementByAccount.CodCta, isSubtract, fecha);
 				}
 			}
 			
 			return true;
 		}
 
-		private async Task<bool> SaveTotalAccount(RegistryInWareHouse registryInWareHouse, T87Movimiento movement, string codCta,bool isSubtract, int mes)
+		private async Task<bool> SaveTotalAccount(RegistryInWareHouse registryInWareHouse, T87Movimiento movement, string codCta,bool isSubtract, DateTime fecha)
 		{
 			T88TotalCuenta totalCountBefore = await _t88TotalCuenta.Query()
-					.FirstOrDefaultAsync(t => t.T88CodCia.Equals(registryInWareHouse.CodCia) && t.T88Agno == (short)registryInWareHouse.FechaActual.Date.Year &&
-						t.T88CodCta.Equals(codCta) && t.T88Mes == mes);
+					.FirstOrDefaultAsync(t => t.T88CodCia.Equals(registryInWareHouse.CodCia) && t.T88Agno == (short)fecha.Date.Year &&
+						t.T88CodCta.Equals(codCta) && t.T88Mes == fecha.Date.Month);
 			T88TotalCuenta totalAccount = SetModelTotalAccount(movement, totalCountBefore, isSubtract);
 			if (totalCountBefore != null)
 			{
@@ -253,12 +289,12 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
-		private async Task<bool> SaveTotalCostCenter(RegistryInWareHouse registryInWareHouse, T87Movimiento movement, string codCta, bool isSubtract, int mes)
+		private async Task<bool> SaveTotalCostCenter(RegistryInWareHouse registryInWareHouse, T87Movimiento movement, string codCta, bool isSubtract, DateTime fecha)
 		{
 			string CodCentro = isSubtract ? movement.T87CodCentro : registryInWareHouse.CodCentro;
 			T89TotalCentroCosto totalCostCenterBefore = await _t89TotalCentroCosto.Query()
-				.FirstOrDefaultAsync(tc => tc.T89CodCia.Equals(registryInWareHouse.CodCia) && tc.T89Agno == (short)registryInWareHouse.FechaActual.Date.Year &&
-					tc.T89CodCta.Equals(codCta) && tc.T89CodCentro.Equals(CodCentro) && tc.T89Mes == mes);
+				.FirstOrDefaultAsync(tc => tc.T89CodCia.Equals(registryInWareHouse.CodCia) && tc.T89Agno == (short)fecha.Date.Year &&
+					tc.T89CodCta.Equals(codCta) && tc.T89CodCentro.Equals(CodCentro) && tc.T89Mes == fecha.Date.Month);
 
 			T89TotalCentroCosto totalCostCenter = SetModelTotalCostCenter(movement, totalCostCenterBefore, isSubtract);
 			if (totalCostCenterBefore != null)
@@ -287,12 +323,12 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
-		private async Task<bool> SaveTotalPerson(RegistryInWareHouse registryInWareHouse, T87Movimiento movement, string codCta, bool isSubtract, int mes)
+		private async Task<bool> SaveTotalPerson(RegistryInWareHouse registryInWareHouse, T87Movimiento movement, string codCta, bool isSubtract, DateTime fecha)
 		{
 			string Nit = isSubtract ? movement.T87Nit : registryInWareHouse.Nit;
 			T90TotalTercero totalPersonBefore = await _t90TotalTercero.Query()
-				.FirstOrDefaultAsync(tn => tn.T90CodCia.Equals(registryInWareHouse.CodCia) && tn.T90Agno == (short)registryInWareHouse.FechaActual.Date.Year && 
-					tn.T90CodCta.Equals(codCta) && tn.T90Nit.Equals(Nit) && tn.T90Mes == mes);
+				.FirstOrDefaultAsync(tn => tn.T90CodCia.Equals(registryInWareHouse.CodCia) && tn.T90Agno == (short)fecha.Date.Year && 
+					tn.T90CodCta.Equals(codCta) && tn.T90Nit.Equals(Nit) && tn.T90Mes == fecha.Date.Month);
 
 			T90TotalTercero totalPerson = SetModelTotalPerson(movement, totalPersonBefore, isSubtract);
 			if (totalPersonBefore != null)
@@ -321,9 +357,9 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
-		private async Task<string> ValidationsBeforeSaveDocument(RegistryInWareHouse registryInWareHouse, bool isCreate)
+		private async Task<string> ValidationsBeforeSaveDocument(RegistryInWareHouse registryInWareHouse, bool isCreate, bool callCreateOrUpdate)
 		{
-			string messageTransaction = ValidateFieldsRequired(registryInWareHouse, isCreate);
+			string messageTransaction = ValidateFieldsRequired(registryInWareHouse, isCreate, callCreateOrUpdate);
 			if(messageTransaction == "OK")
 			{
 				messageTransaction = await ValidateCompany(registryInWareHouse.CodCia); // Preguntar si este dato es necesario validarlo 
@@ -332,16 +368,15 @@ namespace AccountingEntry.Domain.Services
 					messageTransaction = await ValidateApplicationName(registryInWareHouse.AppName); // Preguntar si este dato es necesario validarlo
 					if (messageTransaction == "OK")
 					{
-						messageTransaction = await ValidatePeriodLock(registryInWareHouse.CodCia, registryInWareHouse.FechaActual.Date, registryInWareHouse.FechaAnterior.Date); //TODO: Revisar si se envia fecha anterior nula no se cae la app
-						if (messageTransaction == "OK")
+						messageTransaction = await ValidatePeriodLock(registryInWareHouse.CodCia, registryInWareHouse.FechaActual.Date, registryInWareHouse.FechaAnterior.Date);
 						{
-							messageTransaction = registryInWareHouse.Cuentas.Count > 1 ? await ValidateAccountByDateAndCompany(registryInWareHouse) : MessagesError(3, "");
+							messageTransaction = await ValidateDocumentTypeCode(registryInWareHouse.CodTipoDoc, registryInWareHouse.CodCia);
 							if (messageTransaction == "OK")
 							{
-								messageTransaction = await ValidateDocumentTypeCode(registryInWareHouse.CodTipoDoc, registryInWareHouse.CodCia);
-								if(messageTransaction == "OK")
+								messageTransaction = await ValidateUser(registryInWareHouse.IdUsr);
+								if(messageTransaction == "OK" && callCreateOrUpdate)
 								{
-									messageTransaction = await ValidateUser(registryInWareHouse.IdUsr);
+									messageTransaction = registryInWareHouse.Cuentas.Count > 1 ? await ValidateAccountByDateAndCompany(registryInWareHouse) : MessagesError(3, "");
 								}
 							}
 						}
@@ -467,20 +502,23 @@ namespace AccountingEntry.Domain.Services
 			return user != null ? MessagesError(0, "") : MessagesError(11, "");
 		}
 
-		private string ValidateFieldsRequired(RegistryInWareHouse registryInWareHouse, bool isCreate)
+		private string ValidateFieldsRequired(RegistryInWareHouse registryInWareHouse, bool isCreate, bool callCreateOrUpdate)
 		{
 			string fieldNames = "";
 			fieldNames = registryInWareHouse.CodCia == null ? fieldNames + "CodCia" : fieldNames;
 			fieldNames = registryInWareHouse.FechaActual == null || registryInWareHouse.FechaActual.Equals(Activator.CreateInstance(typeof(DateTime))) ?
 				fieldNames + ", Fecha" : fieldNames;
-			fieldNames = !isCreate && (registryInWareHouse.FechaAnterior == null || registryInWareHouse.FechaAnterior.Equals(Activator.CreateInstance(typeof(DateTime)))) ?
-				fieldNames + "FechaAnterior" : fieldNames;
 			fieldNames = registryInWareHouse.CodTipoDoc == null ? fieldNames + ", CodTipoDoc" : fieldNames;
-			fieldNames = registryInWareHouse.Concepto == null ? fieldNames + ", Concepto" : fieldNames;
 			fieldNames = registryInWareHouse.NumeroDoc == 0 ? fieldNames + ", NumeroDoc" : fieldNames;
 			fieldNames = registryInWareHouse.AppName == null ? fieldNames + ", AppName" : fieldNames;
-			fieldNames = registryInWareHouse.Cuentas == null ? fieldNames + ", Cuentas" : validateFieldsCountsRequired(registryInWareHouse.Cuentas, fieldNames);
 			fieldNames = registryInWareHouse.ComputerAud == null ? fieldNames + ", ComputerAud" : fieldNames;
+			if(callCreateOrUpdate)
+			{
+				fieldNames = !isCreate && (registryInWareHouse.FechaAnterior == null || registryInWareHouse.FechaAnterior.Equals(Activator.CreateInstance(typeof(DateTime)))) ?
+					fieldNames + "FechaAnterior" : fieldNames;
+				fieldNames = registryInWareHouse.Concepto == null ? fieldNames + ", Concepto" : fieldNames;
+				fieldNames = registryInWareHouse.Cuentas == null ? fieldNames + ", Cuentas" : validateFieldsCountsRequired(registryInWareHouse.Cuentas, fieldNames);
+			}
 
 			return fieldNames == "" ? MessagesError(0, "") : MessagesError(12, fieldNames);
 		}
@@ -605,13 +643,14 @@ namespace AccountingEntry.Domain.Services
 
 		private Sypsysaudit SetModelAudit(T85Documento document, int idUsr, string TablaAud, string ComputerAud, short TransAud)
 		{
+			var concepto = document.T85Concepto.Count() > 50 ? document.T85Concepto.Remove(50) : document.T85Concepto;
 			Sypsysaudit audit = new Sypsysaudit();
 			audit.FechaAud = DateTime.Now;
 			audit.IdUsr = idUsr;
 			audit.TablaAud = TablaAud;
 			audit.TransAud = TransAud;
 			audit.DescAud = document.T85CodCia + ":" + document.T85Agno + ":" + document.T85CodTipoDoc + ":" + document.T85NumeroDoc + ":" + 
-				document.T85Fecha.ToString("dd/M/yyyy") + ":" + document.T85Anulado + ":" + document.T85AppName + ":" + document.T85Concepto.Remove(50) + 
+				document.T85Fecha.ToString("dd/M/yyyy") + ":" + document.T85Anulado + ":" + document.T85AppName + ":" + concepto +
 				":" + ":" + document.T85NumeroDocAnul;
 			audit.ComputerAud = ComputerAud;
 

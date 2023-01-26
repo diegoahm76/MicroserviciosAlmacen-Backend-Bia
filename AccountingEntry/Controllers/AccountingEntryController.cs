@@ -24,7 +24,7 @@ namespace AccountingEntry.API.Controllers
 		}
 
 		/// <summary>
-		/// Registra un asiento contable
+		/// Registra un Documento
 		/// </summary>
 		/// <returns></returns>
 		[Route("CreateAccountingSeat")]
@@ -35,7 +35,7 @@ namespace AccountingEntry.API.Controllers
 			{
 				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
 				var document = await _accountingEntryService.CreateOrUpdtaeAccountingSeat(registryInWareHouse, true);
-				var documentResponse = _mapper.Map<CreateDocument>(document);
+				var documentResponse = _mapper.Map<DocumentTransaction>(document);
 				return Ok(documentResponse);
 			}
 			catch (Exception e)
@@ -48,7 +48,7 @@ namespace AccountingEntry.API.Controllers
 		}
 
 		/// <summary>
-		/// 
+		/// Edita un Documento
 		/// </summary>
 		/// <param name="registryInWareHouseRequest"></param>
 		/// <returns></returns>
@@ -60,7 +60,32 @@ namespace AccountingEntry.API.Controllers
 			{
 				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
 				var document = await _accountingEntryService.CreateOrUpdtaeAccountingSeat(registryInWareHouse, false);
-				var documentResponse = _mapper.Map<CreateDocument>(document);
+				var documentResponse = _mapper.Map<DocumentTransaction>(document);
+				return Ok(documentResponse);
+			}
+			catch (Exception e)
+			{
+				if (e is ApplicationException)
+					return BadRequest(e.Message);
+				else
+					return BadRequest(e);
+			}
+		}
+
+		/// <summary>
+		/// Elimina un Documento
+		/// </summary>
+		/// <param name="registryInWareHouseRequest"></param>
+		/// <returns></returns>
+		[Route("DeleteAccountingSeat")]
+		[HttpPost]
+		public async Task<IActionResult> DeleteAccountingSeat(RegistryInWareHouseRequest registryInWareHouseRequest)
+		{
+			try
+			{
+				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
+				var document = await _accountingEntryService.DeleteAccountingSeat(registryInWareHouse);
+				var documentResponse = _mapper.Map<DocumentTransaction>(document);
 				return Ok(documentResponse);
 			}
 			catch (Exception e)
