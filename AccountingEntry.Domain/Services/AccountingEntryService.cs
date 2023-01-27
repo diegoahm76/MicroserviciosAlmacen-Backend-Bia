@@ -82,10 +82,8 @@ namespace AccountingEntry.Domain.Services
 			string messageTransaction = await ValidationsBeforeSaveDocument(registryInWareHouse, false, false);
 			if (messageTransaction == "OK")
 			{
-				T85Documento documentDB = await _t85Documento.Query()
-					.FirstOrDefaultAsync(d => d.T85CodCia.Equals(registryInWareHouse.CodCia) && d.T85Agno == registryInWareHouse.FechaActual.Date.Year &&
-						d.T85CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc) && d.T85NumeroDoc == registryInWareHouse.NumeroDoc);
-				if(documentDB != null)
+				T85Documento documentDB = await GetDocument(registryInWareHouse.CodCia, registryInWareHouse.FechaActual, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
+				if (documentDB != null)
 				{
 					await DeleteMovementsAndTotals(registryInWareHouse);
 					await DeleteDocument(registryInWareHouse);
@@ -103,19 +101,93 @@ namespace AccountingEntry.Domain.Services
 			}
 		}
 
-		public async Task<T85Documento> CreateDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
+		public async Task<T85Documento> CanceledAccountingSeat(CanceledDocument canceledDocument)
+		{
+			string messageTransaction = await ValidationsBeforeCanceledDocument(canceledDocument);
+			if(messageTransaction == "OK") {
+				int maxNumberDocAnul = await MaxDocumentNumber(canceledDocument.CodCia, canceledDocument.FechaAnul, canceledDocument.CodTipoDocAnul);
+				T85Documento documentCanceled = await InsertDocumentCanceled(canceledDocument, maxNumberDocAnul);
+				T85Documento documentDB = await GetDocument(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc, canceledDocument.NumeroDoc);
+				if(documentDB != null)
+				{
+					documentDB.T85Anulado = "S";
+					documentDB.T85NumeroDocAnul = maxNumberDocAnul + 1;
+					await UpdateT85Documento(documentDB);
+					await SaveAuditRegistries(documentDB, canceledDocument.IdUsr, "T85DOCUMENTO", canceledDocument.ComputerAud, 1);
+				}else
+				{
+					int maxNumberDoc = await MaxDocumentNumber(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc);
+					RegistryInWareHouse registryInWareHouse = new RegistryInWareHouse();
+					registryInWareHouse.CodCia = canceledDocument.CodCia;
+					registryInWareHouse.FechaActual = canceledDocument.FechaDoc;
+					registryInWareHouse.CodTipoDoc = canceledDocument.CodTipoDoc;
+					registryInWareHouse.NumeroDoc = maxNumberDoc + 1;
+					registryInWareHouse.Concepto = canceledDocument.Concepto;
+					registryInWareHouse.AppName = canceledDocument.AppName;
+					registryInWareHouse.IdUsr = canceledDocument.IdUsr;
+					registryInWareHouse.ComputerAud = canceledDocument.ComputerAud;
+					await CreateDocument(registryInWareHouse);
+				}
+
+				return documentCanceled;
+			}
+			else
+			{
+				throw new ApplicationException(messageTransaction);
+			}
+		}
+
+		private async Task<T85Documento> InsertDocumentCanceled(CanceledDocument canceledDocument, int maxNumberDocAnul)
+		{
+			
+			var movementsDB = await GetMovements(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc, canceledDocument.NumeroDoc);
+			RegistryInWareHouse registryInWareHouse = new RegistryInWareHouse();
+			registryInWareHouse.CodCia = canceledDocument.CodCia;
+			registryInWareHouse.FechaActual = canceledDocument.FechaAnul;
+			registryInWareHouse.CodTipoDoc = canceledDocument.CodTipoDocAnul;
+			registryInWareHouse.NumeroDoc = maxNumberDocAnul + 1;
+			registryInWareHouse.Concepto = canceledDocument.ConceptoAnul;
+			registryInWareHouse.AppName = canceledDocument.AppName;
+			registryInWareHouse.IdUsr = canceledDocument.IdUsr;
+			registryInWareHouse.ComputerAud = canceledDocument.ComputerAud;
+
+			if (movementsDB.Count() > 0)
+			{
+				foreach (var movement in movementsDB)
+				{
+					Account cuenta = new Account()
+					{
+						CodCta = movement.T87CodCta,
+						Detalle = movement.T87Detalle,
+						ValorBase = movement.T87ValorBase,
+						ValorDebito = movement.T87ValorCredito,
+						ValorCredito = movement.T87ValorDebito
+					};
+					registryInWareHouse.Cuentas.Add(cuenta);
+				}
+			}
+			T85Documento documentCanceled = await CreateDocument(registryInWareHouse);
+			await SaveMovements(registryInWareHouse);
+			return documentCanceled;
+		}
+
+		private async Task<T85Documento> CreateDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
+		{
+			T85Documento document = await CreateDocument(registryInWareHouse);
+			await SaveMovements(registryInWareHouse);
+			return document;
+		}
+
+		private async Task<T85Documento> CreateDocument(RegistryInWareHouse registryInWareHouse)
 		{
 			T85Documento document = SetModelDocument(registryInWareHouse);
 			await _t85Documento.Add(document);
 			await _unitOfWork.SaveChangesAsync();
-
 			await SaveAuditRegistries(document, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 0);
-			await SaveMovements(registryInWareHouse);
-
 			return document;
 		}
 
-		public async Task<T85Documento> UpdateDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
+		private async Task<T85Documento> UpdateDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
 		{
 			T85Documento documentUpdate = SetModelDocument(registryInWareHouse);
 			await UpdateT85Documento(documentUpdate);
@@ -203,10 +275,7 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task DeleteMovementsAndTotals(RegistryInWareHouse registryInWareHouse)
 		{
-			var movementsInDb = await _t87Movimiento.Query()
-					.Where(m => m.T87CodCia.Equals(registryInWareHouse.CodCia) && m.T87Agno == (short)registryInWareHouse.FechaAnterior.Date.Year &&
-						m.T87CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc) && m.T87NumeroDoc == registryInWareHouse.NumeroDoc)
-					.SelectAsync();
+			var movementsInDb = await GetMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
 			if (movementsInDb.Count() > 0)
 			{
 				List<string> codCtas = movementsInDb.Select(m => m.T87CodCta).ToList();
@@ -357,6 +426,35 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
+		/*Query zone*/
+		private async Task<int> MaxDocumentNumber(string CodCia, DateTime Fecha, string CodTipoDocAnul)
+		{
+			int maxNumberDocAnul = (int)await _t85Documento.Query()
+					.Where(d => d.T85CodCia.Equals(CodCia) && d.T85Agno == Fecha.Date.Year &&
+						d.T85CodTipoDoc.Equals(CodTipoDocAnul))
+					.MaxAsync(d => d.T85NumeroDoc);
+			return maxNumberDocAnul;
+		}
+
+		private async Task<T85Documento> GetDocument(string CodCia, DateTime FechaDoc, string CodTipoDoc, int NumeroDoc)
+		{
+			T85Documento documentInDB = await _t85Documento.Query()
+						.FirstOrDefaultAsync(d => d.T85CodCia.Equals(CodCia) && d.T85Agno == FechaDoc.Date.Year &&
+							d.T85CodTipoDoc.Equals(CodTipoDoc) && d.T85NumeroDoc == NumeroDoc);
+			return documentInDB;
+		}
+
+		private async Task<IEnumerable<T87Movimiento>> GetMovements(string CodCia, DateTime FechaDoc, string CodTipoDoc, int NumeroDoc)
+		{
+			var movementsInDb = await _t87Movimiento.Query()
+					.Where(m => m.T87CodCia.Equals(CodCia) && m.T87Agno == (short)FechaDoc.Date.Year &&
+						m.T87CodTipoDoc.Equals(CodTipoDoc) && m.T87NumeroDoc == NumeroDoc)
+					.SelectAsync();
+			return movementsInDb;
+		}
+
+
+		/*Validations zone*/
 		private async Task<string> ValidationsBeforeSaveDocument(RegistryInWareHouse registryInWareHouse, bool isCreate, bool callCreateOrUpdate)
 		{
 			string messageTransaction = ValidateFieldsRequired(registryInWareHouse, isCreate, callCreateOrUpdate);
@@ -378,6 +476,38 @@ namespace AccountingEntry.Domain.Services
 								{
 									messageTransaction = registryInWareHouse.Cuentas.Count > 1 ? await ValidateAccountByDateAndCompany(registryInWareHouse) : MessagesError(3, "");
 								}
+							}
+						}
+					}
+				}
+			}
+
+			return messageTransaction;
+		}
+
+		private async Task<string> ValidationsBeforeCanceledDocument(CanceledDocument canceledDocument)
+		{
+			string messageTransaction = ValidateFieldsRequiredToCanceled(canceledDocument);
+			if (messageTransaction == "OK")
+			{
+				messageTransaction = await ValidateCompany(canceledDocument.CodCia); // Preguntar si este dato es necesario validarlo
+				if(messageTransaction == "OK")
+				{
+					messageTransaction = await ValidateApplicationName(canceledDocument.AppName); // Preguntar si este dato es necesario validarlo
+					if (messageTransaction == "OK")
+					{
+						messageTransaction = await ValidatePeriodLock(canceledDocument.CodCia, canceledDocument.FechaAnul.Date, canceledDocument.FechaDoc.Date);
+						if (messageTransaction == "OK")
+						{
+							for(int i = 0; i < 2; i++)
+							{
+								messageTransaction = await ValidateDocumentTypeCode(i == 0 ? canceledDocument.CodTipoDoc : canceledDocument.CodTipoDocAnul, canceledDocument.CodCia);
+								if (messageTransaction != "OK") break;
+							}
+
+							if (messageTransaction == "OK")
+							{
+								messageTransaction = await ValidateUser(canceledDocument.IdUsr);
 							}
 						}
 					}
@@ -519,6 +649,24 @@ namespace AccountingEntry.Domain.Services
 				fieldNames = registryInWareHouse.Concepto == null ? fieldNames + ", Concepto" : fieldNames;
 				fieldNames = registryInWareHouse.Cuentas == null ? fieldNames + ", Cuentas" : validateFieldsCountsRequired(registryInWareHouse.Cuentas, fieldNames);
 			}
+
+			return fieldNames == "" ? MessagesError(0, "") : MessagesError(12, fieldNames);
+		}
+
+		private string ValidateFieldsRequiredToCanceled(CanceledDocument canceledDocument)
+		{
+			string fieldNames = "";
+			fieldNames = canceledDocument.CodCia == null ? fieldNames + "CodCia" : fieldNames;
+			fieldNames = canceledDocument.FechaDoc == null || canceledDocument.FechaDoc.Equals(Activator.CreateInstance(typeof(DateTime))) ?
+				fieldNames + ", FechaDoc" : fieldNames;
+			fieldNames = canceledDocument.FechaAnul == null || canceledDocument.FechaAnul.Equals(Activator.CreateInstance(typeof(DateTime))) ?
+				fieldNames + ", FechaAnul" : fieldNames;
+			fieldNames = canceledDocument.CodTipoDoc == null ? fieldNames + ", CodTipoDoc" : fieldNames;
+			fieldNames = canceledDocument.CodTipoDocAnul == null ? fieldNames + ", CodTipoDocAnul" : fieldNames;
+			fieldNames = canceledDocument.NumeroDoc == 0 ? fieldNames + ", NumeroDoc" : fieldNames;
+			fieldNames = canceledDocument.ConceptoAnul == null ? fieldNames + ", ConceptoAnul" : fieldNames;
+			fieldNames = canceledDocument.AppName == null ? fieldNames + ", AppName" : fieldNames;
+			fieldNames = canceledDocument.ComputerAud == null ? fieldNames + ", ComputerAud" : fieldNames;
 
 			return fieldNames == "" ? MessagesError(0, "") : MessagesError(12, fieldNames);
 		}

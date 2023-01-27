@@ -96,5 +96,30 @@ namespace AccountingEntry.API.Controllers
 					return BadRequest(e);
 			}
 		}
+
+		/// <summary>
+		/// Elimina un Documento
+		/// </summary>
+		/// <param name="registryInWareHouseRequest"></param>
+		/// <returns></returns>
+		[Route("CanceledAccountingSeat")]
+		[HttpPost]
+		public async Task<IActionResult> CanceledAccountingSeat(CanceledDocumentRequest canceledDocumentRequest)
+		{
+			try
+			{
+				var registryInWareHouse = _mapper.Map<CanceledDocument>(canceledDocumentRequest);
+				var document = await _accountingEntryService.CanceledAccountingSeat(registryInWareHouse);
+				var documentResponse = _mapper.Map<DocumentTransaction>(document);
+				return Ok(documentResponse);
+			}
+			catch (Exception e)
+			{
+				if (e is ApplicationException)
+					return BadRequest(e.Message);
+				else
+					return BadRequest(e);
+			}
+		}
 	}
 }

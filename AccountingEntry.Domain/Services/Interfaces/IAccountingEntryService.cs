@@ -8,5 +8,6 @@ namespace AccountingEntry.Domain.Services.Interfaces
 	{
 		Task<T85Documento> CreateOrUpdtaeAccountingSeat(RegistryInWareHouse registryInWareHouse, bool isCreate);
 		Task<T85Documento> DeleteAccountingSeat(RegistryInWareHouse registryInWareHouse);
+		Task<T85Documento> CanceledAccountingSeat(CanceledDocument canceledDocument);
 	}
 }
