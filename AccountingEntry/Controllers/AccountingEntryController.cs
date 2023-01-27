@@ -98,7 +98,7 @@ namespace AccountingEntry.API.Controllers
 		}
 
 		/// <summary>
-		/// Elimina un Documento
+		/// Anula un Documento
 		/// </summary>
 		/// <param name="registryInWareHouseRequest"></param>
 		/// <returns></returns>

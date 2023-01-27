@@ -123,6 +123,8 @@ namespace AccountingEntry.Domain.Services
 					registryInWareHouse.CodTipoDoc = canceledDocument.CodTipoDoc;
 					registryInWareHouse.NumeroDoc = maxNumberDoc + 1;
 					registryInWareHouse.Concepto = canceledDocument.Concepto;
+					registryInWareHouse.Anulado = "S";
+					registryInWareHouse.NumeroDocAnul = maxNumberDocAnul + 1;
 					registryInWareHouse.AppName = canceledDocument.AppName;
 					registryInWareHouse.IdUsr = canceledDocument.IdUsr;
 					registryInWareHouse.ComputerAud = canceledDocument.ComputerAud;
@@ -139,7 +141,6 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<T85Documento> InsertDocumentCanceled(CanceledDocument canceledDocument, int maxNumberDocAnul)
 		{
-			
 			var movementsDB = await GetMovements(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc, canceledDocument.NumeroDoc);
 			RegistryInWareHouse registryInWareHouse = new RegistryInWareHouse();
 			registryInWareHouse.CodCia = canceledDocument.CodCia;
@@ -153,6 +154,7 @@ namespace AccountingEntry.Domain.Services
 
 			if (movementsDB.Count() > 0)
 			{
+				if (registryInWareHouse.Cuentas == null) registryInWareHouse.Cuentas = new List<Account>();
 				foreach (var movement in movementsDB)
 				{
 					Account cuenta = new Account()
@@ -164,10 +166,14 @@ namespace AccountingEntry.Domain.Services
 						ValorCredito = movement.T87ValorDebito
 					};
 					registryInWareHouse.Cuentas.Add(cuenta);
+					registryInWareHouse.CodCentro = movement.T87CodCentro;
+					registryInWareHouse.Nit = movement.T87Nit;
 				}
+				List<string> codCtas = movementsDB.Select(m => m.T87CodCta).ToList();
+				accounts = (List<T80Cuenta>)await GetAccounts(registryInWareHouse.CodCia, registryInWareHouse.FechaActual, codCtas);
+				await SaveMovements(registryInWareHouse);
 			}
 			T85Documento documentCanceled = await CreateDocument(registryInWareHouse);
-			await SaveMovements(registryInWareHouse);
 			return documentCanceled;
 		}
 
@@ -257,7 +263,9 @@ namespace AccountingEntry.Domain.Services
 			sqlParametersExtend.Add(new SqlParameter("@NumeroDoc", documentUpdate.T85NumeroDoc));
 			sqlParametersExtend.Add(new SqlParameter("@Fecha", documentUpdate.T85Fecha));
 			sqlParametersExtend.Add(new SqlParameter("@Concepto", documentUpdate.T85Concepto));
-			var updateString = "UPDATE [PIMISYS].[dbo].[T85DOCUMENTO] SET T85Agno = @Agno, T85Fecha = @Fecha, T85Concepto = @Concepto WHERE T85CodCia = @CodCia AND T85Agno = @Agno AND T85CodTipoDoc = @CodTipoDoc AND T85NumeroDoc = @NumeroDoc";
+			sqlParametersExtend.Add(new SqlParameter("@Anulado", documentUpdate.T85Anulado));
+			sqlParametersExtend.Add(new SqlParameter("@NumeroDocAnul", documentUpdate.T85NumeroDocAnul));
+			var updateString = "UPDATE [PIMISYS].[dbo].[T85DOCUMENTO] SET T85Agno = @Agno, T85Fecha = @Fecha, T85Concepto = @Concepto, T85Anulado = @Anulado, T85NumeroDocAnul = @NumeroDocAnul WHERE T85CodCia = @CodCia AND T85Agno = @Agno AND T85CodTipoDoc = @CodTipoDoc AND T85NumeroDoc = @NumeroDoc";
 			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 			return true;
 		}
@@ -279,10 +287,7 @@ namespace AccountingEntry.Domain.Services
 			if (movementsInDb.Count() > 0)
 			{
 				List<string> codCtas = movementsInDb.Select(m => m.T87CodCta).ToList();
-				var accountsForMovements = await _t80CuentaRepository.Query()
-						.Where(c => c.T80CodCia.Equals(registryInWareHouse.CodCia) && c.T80Agno == registryInWareHouse.FechaAnterior.Date.Year)
-						.ConditionalWhere(() => codCtas.Any(), c => codCtas.Contains(c.T80CodCta))
-						.SelectAsync();
+				var accountsForMovements = await GetAccounts(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior, codCtas);
 				var listCounts = accountsForMovements.Concat(accounts);
 				accounts = listCounts.GroupBy(car => car.T80CodCta).Select(g => g.First()).ToList();
 				await DeleteMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior.Date.Year, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
@@ -426,7 +431,7 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
-		/*Query zone*/
+		/*Common Querys Zone*/
 		private async Task<int> MaxDocumentNumber(string CodCia, DateTime Fecha, string CodTipoDocAnul)
 		{
 			int maxNumberDocAnul = (int)await _t85Documento.Query()
@@ -453,6 +458,14 @@ namespace AccountingEntry.Domain.Services
 			return movementsInDb;
 		}
 
+		private async Task<IEnumerable<T80Cuenta>> GetAccounts(string CodCia, DateTime Fecha, List<string> codCtas)
+		{
+			var accounts = await _t80CuentaRepository.Query()
+						.Where(c => c.T80CodCia.Equals(CodCia) && c.T80Agno == Fecha.Date.Year)
+						.ConditionalWhere(() => codCtas.Any(), c => codCtas.Contains(c.T80CodCta))
+						.SelectAsync();
+			return accounts;
+		}
 
 		/*Validations zone*/
 		private async Task<string> ValidationsBeforeSaveDocument(RegistryInWareHouse registryInWareHouse, bool isCreate, bool callCreateOrUpdate)

@@ -16,6 +16,7 @@ namespace AccountingEntry.API
 			CreateMap<RegistryInWareHouseRequest, RegistryInWareHouse>().ReverseMap();
 			CreateMap<AccountRequest, Account>().ReverseMap();
 			CreateMap<T85Documento, DocumentTransaction>().ReverseMap();
+			CreateMap<CanceledDocumentRequest, CanceledDocument>().ReverseMap();
 		}
 	}
 }
