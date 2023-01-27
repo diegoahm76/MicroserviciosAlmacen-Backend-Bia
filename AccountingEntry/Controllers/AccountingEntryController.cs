@@ -26,6 +26,7 @@ namespace AccountingEntry.API.Controllers
 		/// <summary>
 		/// Registra un Documento
 		/// </summary>
+		/// <param name="registryInWareHouseRequest"></param>
 		/// <returns></returns>
 		[Route("CreateAccountingSeat")]
 		[HttpPost]
@@ -75,15 +76,15 @@ namespace AccountingEntry.API.Controllers
 		/// <summary>
 		/// Elimina un Documento
 		/// </summary>
-		/// <param name="registryInWareHouseRequest"></param>
+		/// <param name="deleteDocumentRequestRequest"></param>
 		/// <returns></returns>
 		[Route("DeleteAccountingSeat")]
 		[HttpPost]
-		public async Task<IActionResult> DeleteAccountingSeat(RegistryInWareHouseRequest registryInWareHouseRequest)
+		public async Task<IActionResult> DeleteAccountingSeat(DeleteDocumentRequest deleteDocumentRequestRequest)
 		{
 			try
 			{
-				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(registryInWareHouseRequest);
+				var registryInWareHouse = _mapper.Map<RegistryInWareHouse>(deleteDocumentRequestRequest);
 				var document = await _accountingEntryService.DeleteAccountingSeat(registryInWareHouse);
 				var documentResponse = _mapper.Map<DocumentTransaction>(document);
 				return Ok(documentResponse);
@@ -100,7 +101,7 @@ namespace AccountingEntry.API.Controllers
 		/// <summary>
 		/// Anula un Documento
 		/// </summary>
-		/// <param name="registryInWareHouseRequest"></param>
+		/// <param name="canceledDocumentRequest"></param>
 		/// <returns></returns>
 		[Route("CanceledAccountingSeat")]
 		[HttpPost]
