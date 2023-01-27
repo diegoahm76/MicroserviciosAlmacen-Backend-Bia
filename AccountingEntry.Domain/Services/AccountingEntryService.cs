@@ -207,9 +207,7 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<bool> SaveAuditRegistries(T85Documento document, int IdUsr, string Table, string ComputerAud, short TransAud)
 		{
-			Sypsysaudit audit = new Sypsysaudit();
-			audit = SetModelAudit(document, IdUsr, Table, ComputerAud, TransAud);
-
+			Sypsysaudit audit = SetModelAudit(document, IdUsr, Table, ComputerAud, TransAud);
 			await _sypsysauditRepository.Add(audit);
 			await _unitOfWork.SaveChangesAsync();
 			_sypsysauditRepository.Detach(audit);
@@ -299,15 +297,14 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<bool> DeleteMovements(string codCia, int agno, string codTipoDoc, int numeroDoc)
 		{
-			bool isDelete = false;
 			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
 			sqlParametersExtend.Add(new SqlParameter("@CodCia", codCia));
 			sqlParametersExtend.Add(new SqlParameter("@Agno", agno));
 			sqlParametersExtend.Add(new SqlParameter("@CodTipoDoc", codTipoDoc));
 			sqlParametersExtend.Add(new SqlParameter("@NumeroDoc", numeroDoc));
 			var updateString = "DELETE FROM [PIMISYS].[dbo].[T87MOVIMIENTO] WHERE T87CodCia = @CodCia AND T87Agno = @Agno AND T87CodTipoDoc = @CodTipoDoc AND T87NumeroDoc = @NumeroDoc";
-			isDelete = (await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend)) == 1;
-			return isDelete;
+			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
+			return true;
 		}
 
 		private async Task<bool> SaveTotals(RegistryInWareHouse registryInWareHouse, List<SetTotals> movementsByAccount, bool isSubtract)
