@@ -20,6 +20,9 @@ namespace AccountingEntry.API.BindingModel
 
 		//Propiedades de la tabla T87MOVIMIENTO
 		public List<AccountRequest> Cuentas { get; set; }
+		public string ReferenciaMov { get; set; } //OPCIONALES EN CASO DE REGISTRARSE ESTE DATO
+		public string CodTipoDocCruceMov { get; set; } //OPCIONALES EN CASO DE REGISTRARSE ESTE DATO
+		public string NumeroDocCruceMov { get; set; } //OPCIONALES EN CASO DE REGISTRARSE ESTE DATO
 
 		//Propiedades de la tabla SYPSYSAUDIT
 		public int IdUsr { get; set; }

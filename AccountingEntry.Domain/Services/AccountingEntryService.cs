@@ -736,10 +736,10 @@ namespace AccountingEntry.Domain.Services
 			movement.T87Fecha = registryInWareHouse.FechaActual;
 			movement.T87CodCentro = accountObject.T80CentroCosto.Equals("S") ? registryInWareHouse.CodCentro : "";
 			movement.T87Nit = accountObject.T80Tercero.Equals("S") ? registryInWareHouse.Nit : "";
-			movement.T87Referencia = account.Referencia != null ? account.Referencia : "";
+			movement.T87Referencia = registryInWareHouse.ReferenciaMov != null ? registryInWareHouse.ReferenciaMov : "";
 			movement.T87Detalle = account.Detalle != null ? account.Detalle : "";
-			movement.T87CodTipoDocCruce = account.CodTipoDocCruce != null ? account.CodTipoDocCruce : "";
-			movement.T87NumeroDocCruce = account.NumeroDocCruce != null ? account.NumeroDocCruce : "";
+			movement.T87CodTipoDocCruce = registryInWareHouse.CodTipoDocCruceMov != null ? registryInWareHouse.CodTipoDocCruceMov : "";
+			movement.T87NumeroDocCruce = registryInWareHouse.NumeroDocCruceMov != null ? registryInWareHouse.NumeroDocCruceMov : "";
 			movement.T87ValorBase = account.ValorBase;
 			movement.T87ValorDebito = account.ValorDebito;
 			movement.T87ValorCredito = account.ValorCredito;

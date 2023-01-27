@@ -26,6 +26,9 @@ namespace AccountingEntry.Domain.Model.ModelQuery
 
 		//Propiedades de la tabla T87MOVIMIENTO
 		public List<Account> Cuentas { get; set; }
+		public string ReferenciaMov { get; set; }
+		public string CodTipoDocCruceMov { get; set; }
+		public string NumeroDocCruceMov { get; set; }
 
 		//Propiedades de la tabla SYPSYSAUDIT
 		public int IdUsr { get; set; }
