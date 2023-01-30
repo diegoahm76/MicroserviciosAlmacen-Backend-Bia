@@ -337,22 +337,18 @@ namespace AccountingEntry.Domain.Services
 			T88TotalCuenta totalAccount = SetModelTotalAccount(movement, totalCountBefore, isSubtract);
 			if (totalCountBefore != null)
 			{
-				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-				sqlParametersExtend.Add(new SqlParameter("@T88MovDebitoLocal", totalAccount.T88MovDebitoLocal));
-				sqlParametersExtend.Add(new SqlParameter("@T88MovCreditoLocal", totalAccount.T88MovCreditoLocal));
-				sqlParametersExtend.Add(new SqlParameter("@T88MovDebitoNIIF", totalAccount.T88MovDebitoNIIF));
-				sqlParametersExtend.Add(new SqlParameter("@T88MovCreditoNIIF", totalAccount.T88MovCreditoNIIF));
-				sqlParametersExtend.Add(new SqlParameter("@CodCia", totalAccount.T88CodCia));
-				sqlParametersExtend.Add(new SqlParameter("@Agno", totalAccount.T88Agno));
-				sqlParametersExtend.Add(new SqlParameter("@CodCta", totalAccount.T88CodCta));
-				sqlParametersExtend.Add(new SqlParameter("@Mes", totalAccount.T88Mes));
-				var updateString = "UPDATE [PIMISYS].[dbo].[T88TOTALCUENTA] SET T88MovDebitoLocal = @T88MovDebitoLocal, T88MovCreditoLocal = @T88MovCreditoLocal, T88MovDebitoNIIF = @T88MovDebitoNIIF, T88MovCreditoNIIF = @T88MovCreditoNIIF WHERE T88CodCia = @CodCia AND T88Agno = @Agno AND T88CodCta = @CodCta AND T88Mes = @Mes";
-				await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
+				await UpdateT88TotalCuenta(totalAccount);
 			}
 			else
 			{
-				await _t88TotalCuenta.Add(totalAccount);
-				await _unitOfWork.SaveChangesAsync();
+				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
+				sqlParametersExtend.Add(new SqlParameter("@CodCia", totalAccount.T88CodCia));
+				sqlParametersExtend.Add(new SqlParameter("@Agno", totalAccount.T88Agno));
+				sqlParametersExtend.Add(new SqlParameter("@CodCta", totalAccount.T88CodCta));
+				var insertString = "INSERT INTO T88TOTALCUENTA(T88CodCia,T88Agno,T88CodCta,T88Mes,T88MovDebitoLocal,T88MovCreditoLocal,T88MovDebitoNIIF,T88MovCreditoNIIF)" +
+					"SELECT @CodCia, @Agno, @CodCta, S08Mes,0.00,0.00,0.00,0.00 FROM S08MES WHERE S08TotalesPYG = 'S'";
+				await _unitOfWork.ExecuteSqlRawAsync(insertString, sqlParametersExtend);
+				await UpdateT88TotalCuenta(totalAccount);
 			}
 
 			_t88TotalCuenta.Detach(totalAccount);
@@ -370,23 +366,19 @@ namespace AccountingEntry.Domain.Services
 			T89TotalCentroCosto totalCostCenter = SetModelTotalCostCenter(movement, totalCostCenterBefore, isSubtract);
 			if (totalCostCenterBefore != null)
 			{
+				await UpdateT89TotalCentroCosto(totalCostCenter);
+			}
+			else
+			{
 				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-				sqlParametersExtend.Add(new SqlParameter("@T89MovDebitoLocal", totalCostCenter.T89MovDebitoLocal));
-				sqlParametersExtend.Add(new SqlParameter("@T89MovCreditoLocal", totalCostCenter.T89MovCreditoLocal));
-				sqlParametersExtend.Add(new SqlParameter("@T89MovDebitoNIIF", totalCostCenter.T89MovDebitoNIIF));
-				sqlParametersExtend.Add(new SqlParameter("@T89MovCreditoNIIF", totalCostCenter.T89MovCreditoNIIF));
 				sqlParametersExtend.Add(new SqlParameter("@CodCia", totalCostCenter.T89CodCia));
 				sqlParametersExtend.Add(new SqlParameter("@Agno", totalCostCenter.T89Agno));
 				sqlParametersExtend.Add(new SqlParameter("@CodCta", totalCostCenter.T89CodCta));
 				sqlParametersExtend.Add(new SqlParameter("@CodCentro", totalCostCenter.T89CodCentro));
-				sqlParametersExtend.Add(new SqlParameter("@Mes", totalCostCenter.T89Mes));
-				var updateString = "UPDATE [PIMISYS].[dbo].[T89TOTALCENTROCOSTO] SET T89MovDebitoLocal = @T89MovDebitoLocal, T89MovCreditoLocal = @T89MovCreditoLocal, T89MovDebitoNIIF = @T89MovDebitoNIIF, T89MovCreditoNIIF = @T89MovCreditoNIIF WHERE T89CodCia = @CodCia AND T89Agno = @Agno AND T89CodCta = @CodCta AND T89CodCentro = @CodCentro AND T89Mes = @Mes";
-				await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
-			}
-			else
-			{
-				await _t89TotalCentroCosto.Add(totalCostCenter);
-				await _unitOfWork.SaveChangesAsync();
+				var insertString = "INSERT INTO T89TOTALCENTROCOSTO(T89CodCia,T89Agno,T89CodCta,T89CodCentro,T89Mes,T89MovDebitoLocal,T89MovCreditoLocal,T89MovDebitoNIIF,T89MovCreditoNIIF)" +
+					"SELECT @CodCia, @Agno, @CodCta, @CodCentro,S08Mes,0.00,0.00,0.00,0.00 FROM S08MES WHERE S08TotalesPYG = 'S'";
+				await _unitOfWork.ExecuteSqlRawAsync(insertString, sqlParametersExtend);
+				await UpdateT89TotalCentroCosto(totalCostCenter);
 			}
 
 			_t89TotalCentroCosto.Detach(totalCostCenter);
@@ -398,34 +390,77 @@ namespace AccountingEntry.Domain.Services
 		{
 			string Nit = isSubtract ? movement.T87Nit : registryInWareHouse.Nit;
 			T90TotalTercero totalPersonBefore = await _t90TotalTercero.Query()
-				.FirstOrDefaultAsync(tn => tn.T90CodCia.Equals(registryInWareHouse.CodCia) && tn.T90Agno == (short)fecha.Date.Year && 
+				.FirstOrDefaultAsync(tn => tn.T90CodCia.Equals(registryInWareHouse.CodCia) && tn.T90Agno == (short)fecha.Date.Year &&
 					tn.T90CodCta.Equals(codCta) && tn.T90Nit.Equals(Nit) && tn.T90Mes == fecha.Date.Month);
 
 			T90TotalTercero totalPerson = SetModelTotalPerson(movement, totalPersonBefore, isSubtract);
 			if (totalPersonBefore != null)
 			{
+				await UpdateT90TotalTercero(totalPerson);
+			}
+			else
+			{
 				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-				sqlParametersExtend.Add(new SqlParameter("@T90MovDebitoLocal", totalPerson.T90MovDebitoLocal));
-				sqlParametersExtend.Add(new SqlParameter("@T90MovCreditoLocal", totalPerson.T90MovCreditoLocal));
-				sqlParametersExtend.Add(new SqlParameter("@T90MovDebitoNIIF", totalPerson.T90MovDebitoNIIF));
-				sqlParametersExtend.Add(new SqlParameter("@T90MovCreditoNIIF", totalPerson.T90MovCreditoNIIF));
 				sqlParametersExtend.Add(new SqlParameter("@CodCia", totalPerson.T90CodCia));
 				sqlParametersExtend.Add(new SqlParameter("@Agno", totalPerson.T90Agno));
 				sqlParametersExtend.Add(new SqlParameter("@CodCta", totalPerson.T90CodCta));
 				sqlParametersExtend.Add(new SqlParameter("@Nit", totalPerson.T90Nit));
-				sqlParametersExtend.Add(new SqlParameter("@Mes", totalPerson.T90Mes));
-				var updateString = "UPDATE [PIMISYS].[dbo].[T90TOTALTERCERO] SET T90MovDebitoLocal = @T90MovDebitoLocal, T90MovCreditoLocal = @T90MovCreditoLocal, T90MovDebitoNIIF = @T90MovDebitoNIIF, T90MovCreditoNIIF = @T90MovCreditoNIIF WHERE T90CodCia = @CodCia AND T90Agno = @Agno AND T90CodCta = @CodCta AND T90Nit = @Nit AND T90Mes = @Mes";
-				await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
-			}
-			else
-			{
-				await _t90TotalTercero.Add(totalPerson);
-				await _unitOfWork.SaveChangesAsync();
+				var insertString = "INSERT INTO T90TOTALTERCERO(T90CodCia,T90Agno,T90CodCta,T90Nit,T90Mes,T90MovDebitoLocal,T90MovCreditoLocal,T90MovDebitoNIIF,T90MovCreditoNIIF)" +
+					"SELECT @CodCia, @Agno, @CodCta, @Nit,S08Mes,0.00,0.00,0.00,0.00 FROM S08MES WHERE S08TotalesPYG = 'S'";
+				await _unitOfWork.ExecuteSqlRawAsync(insertString, sqlParametersExtend);
+				await UpdateT90TotalTercero(totalPerson);
 			}
 
 			_t90TotalTercero.Detach(totalPerson);
 
 			return true;
+		}
+
+		private async Task UpdateT88TotalCuenta(T88TotalCuenta totalAccount)
+		{
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
+			sqlParametersExtend.Add(new SqlParameter("@T88MovDebitoLocal", totalAccount.T88MovDebitoLocal));
+			sqlParametersExtend.Add(new SqlParameter("@T88MovCreditoLocal", totalAccount.T88MovCreditoLocal));
+			sqlParametersExtend.Add(new SqlParameter("@T88MovDebitoNIIF", totalAccount.T88MovDebitoNIIF));
+			sqlParametersExtend.Add(new SqlParameter("@T88MovCreditoNIIF", totalAccount.T88MovCreditoNIIF));
+			sqlParametersExtend.Add(new SqlParameter("@CodCia", totalAccount.T88CodCia));
+			sqlParametersExtend.Add(new SqlParameter("@Agno", totalAccount.T88Agno));
+			sqlParametersExtend.Add(new SqlParameter("@CodCta", totalAccount.T88CodCta));
+			sqlParametersExtend.Add(new SqlParameter("@Mes", totalAccount.T88Mes));
+			var updateString = "UPDATE [PIMISYS].[dbo].[T88TOTALCUENTA] SET T88MovDebitoLocal = @T88MovDebitoLocal, T88MovCreditoLocal = @T88MovCreditoLocal, T88MovDebitoNIIF = @T88MovDebitoNIIF, T88MovCreditoNIIF = @T88MovCreditoNIIF WHERE T88CodCia = @CodCia AND T88Agno = @Agno AND T88CodCta = @CodCta AND T88Mes = @Mes";
+			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
+		}
+
+		private async Task UpdateT89TotalCentroCosto(T89TotalCentroCosto totalCostCenter)
+		{
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
+			sqlParametersExtend.Add(new SqlParameter("@T89MovDebitoLocal", totalCostCenter.T89MovDebitoLocal));
+			sqlParametersExtend.Add(new SqlParameter("@T89MovCreditoLocal", totalCostCenter.T89MovCreditoLocal));
+			sqlParametersExtend.Add(new SqlParameter("@T89MovDebitoNIIF", totalCostCenter.T89MovDebitoNIIF));
+			sqlParametersExtend.Add(new SqlParameter("@T89MovCreditoNIIF", totalCostCenter.T89MovCreditoNIIF));
+			sqlParametersExtend.Add(new SqlParameter("@CodCia", totalCostCenter.T89CodCia));
+			sqlParametersExtend.Add(new SqlParameter("@Agno", totalCostCenter.T89Agno));
+			sqlParametersExtend.Add(new SqlParameter("@CodCta", totalCostCenter.T89CodCta));
+			sqlParametersExtend.Add(new SqlParameter("@CodCentro", totalCostCenter.T89CodCentro));
+			sqlParametersExtend.Add(new SqlParameter("@Mes", totalCostCenter.T89Mes));
+			var updateString = "UPDATE [PIMISYS].[dbo].[T89TOTALCENTROCOSTO] SET T89MovDebitoLocal = @T89MovDebitoLocal, T89MovCreditoLocal = @T89MovCreditoLocal, T89MovDebitoNIIF = @T89MovDebitoNIIF, T89MovCreditoNIIF = @T89MovCreditoNIIF WHERE T89CodCia = @CodCia AND T89Agno = @Agno AND T89CodCta = @CodCta AND T89CodCentro = @CodCentro AND T89Mes = @Mes";
+			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
+		}
+
+		private async Task UpdateT90TotalTercero(T90TotalTercero totalPerson)
+		{
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
+			sqlParametersExtend.Add(new SqlParameter("@T90MovDebitoLocal", totalPerson.T90MovDebitoLocal));
+			sqlParametersExtend.Add(new SqlParameter("@T90MovCreditoLocal", totalPerson.T90MovCreditoLocal));
+			sqlParametersExtend.Add(new SqlParameter("@T90MovDebitoNIIF", totalPerson.T90MovDebitoNIIF));
+			sqlParametersExtend.Add(new SqlParameter("@T90MovCreditoNIIF", totalPerson.T90MovCreditoNIIF));
+			sqlParametersExtend.Add(new SqlParameter("@CodCia", totalPerson.T90CodCia));
+			sqlParametersExtend.Add(new SqlParameter("@Agno", totalPerson.T90Agno));
+			sqlParametersExtend.Add(new SqlParameter("@CodCta", totalPerson.T90CodCta));
+			sqlParametersExtend.Add(new SqlParameter("@Nit", totalPerson.T90Nit));
+			sqlParametersExtend.Add(new SqlParameter("@Mes", totalPerson.T90Mes));
+			var updateString = "UPDATE [PIMISYS].[dbo].[T90TOTALTERCERO] SET T90MovDebitoLocal = @T90MovDebitoLocal, T90MovCreditoLocal = @T90MovCreditoLocal, T90MovDebitoNIIF = @T90MovDebitoNIIF, T90MovCreditoNIIF = @T90MovCreditoNIIF WHERE T90CodCia = @CodCia AND T90Agno = @Agno AND T90CodCta = @CodCta AND T90Nit = @Nit AND T90Mes = @Mes";
+			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 		}
 
 		/*Common Querys Zone*/

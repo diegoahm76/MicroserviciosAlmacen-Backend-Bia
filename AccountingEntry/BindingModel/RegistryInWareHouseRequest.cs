@@ -8,7 +8,7 @@ namespace AccountingEntry.API.BindingModel
 		//Propiedades comunes en varias tablas
 		public string CodCia { get; set; } //REQUERIDO!
 		public DateTime FechaActual { get; set; } //REQUERIDO!
-		public DateTime FechaAnterior { get; set; } //REQUERIDO!
+		public DateTime FechaAnterior { get; set; } //REQUERIDO SOLO PARA EDICIÓN Y ELIMINACIÓN!
 		public string CodCentro { get; set; }
 		public string Nit { get; set; }
 		public string CodTipoDoc { get; set; } //REQUERIDO!
