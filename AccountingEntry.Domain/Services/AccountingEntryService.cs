@@ -535,10 +535,10 @@ namespace AccountingEntry.Domain.Services
 			string messageTransaction = ValidateFieldsRequiredToCanceled(canceledDocument);
 			if (messageTransaction == "OK")
 			{
-				messageTransaction = await ValidateCompany(canceledDocument.CodCia); // Preguntar si este dato es necesario validarlo
+				messageTransaction = await ValidateCompany(canceledDocument.CodCia);
 				if(messageTransaction == "OK")
 				{
-					messageTransaction = await ValidateApplicationName(canceledDocument.AppName); // Preguntar si este dato es necesario validarlo
+					messageTransaction = await ValidateApplicationName(canceledDocument.AppName);
 					if (messageTransaction == "OK")
 					{
 						messageTransaction = await ValidatePeriodLock(canceledDocument.CodCia, canceledDocument.FechaAnul.Date, canceledDocument.FechaDoc.Date);
