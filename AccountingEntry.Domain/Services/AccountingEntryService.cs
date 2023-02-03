@@ -3,11 +3,11 @@ using AccountingEntry.Domain.Model.ModelQuery;
 using AccountingEntry.Domain.Services.Interfaces;
 using AccountingEntry.Repository.Interfaces;
 using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore.Internal;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Transactions;
 
 namespace AccountingEntry.Domain.Services
 {
@@ -78,17 +78,24 @@ namespace AccountingEntry.Domain.Services
 
 		public async Task<T85Documento> DeleteAccountingSeat(RegistryInWareHouse registryInWareHouse)
 		{
-			registryInWareHouse.FechaAnterior = registryInWareHouse.FechaActual;
+			registryInWareHouse.FechaDoc = registryInWareHouse.FechaTransaccion;
 			string messageTransaction = await ValidationsBeforeSaveDocument(registryInWareHouse, false, false);
 			if (messageTransaction == "OK")
 			{
-				T85Documento documentDB = await GetDocument(registryInWareHouse.CodCia, registryInWareHouse.FechaActual, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
+				T85Documento documentDB = await GetDocument(registryInWareHouse.CodCia, registryInWareHouse.FechaTransaccion, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
 				if (documentDB != null)
 				{
-					await DeleteMovementsAndTotals(registryInWareHouse);
-					await DeleteDocument(registryInWareHouse);
-					await SaveAuditRegistries(documentDB, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 2);
-					return documentDB;	
+                    TransactionOptions options = new TransactionOptions();
+                    options.IsolationLevel = System.Transactions.IsolationLevel.ReadCommitted;
+                    options.Timeout = TransactionManager.MaximumTimeout;
+                    using (var transaction = new TransactionScope(TransactionScopeOption.Required, options, TransactionScopeAsyncFlowOption.Enabled))
+					{
+                        await DeleteMovementsAndTotals(registryInWareHouse);
+                        await DeleteDocument(registryInWareHouse);
+                        await SaveAuditRegistries(documentDB, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 2);
+						transaction.Complete();
+						return documentDB;
+                    }	
 				}
 				else
 				{
@@ -105,33 +112,40 @@ namespace AccountingEntry.Domain.Services
 		{
 			string messageTransaction = await ValidationsBeforeCanceledDocument(canceledDocument);
 			if(messageTransaction == "OK") {
-				int maxNumberDocAnul = await MaxDocumentNumber(canceledDocument.CodCia, canceledDocument.FechaAnul, canceledDocument.CodTipoDocAnul);
-				T85Documento documentCanceled = await InsertDocumentCanceled(canceledDocument, maxNumberDocAnul);
-				T85Documento documentDB = await GetDocument(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc, canceledDocument.NumeroDoc);
-				if(documentDB != null)
+                TransactionOptions options = new TransactionOptions();
+                options.IsolationLevel = System.Transactions.IsolationLevel.ReadCommitted;
+                options.Timeout = TransactionManager.MaximumTimeout;
+                using (var transaction = new TransactionScope(TransactionScopeOption.Required, options, TransactionScopeAsyncFlowOption.Enabled))
 				{
-					documentDB.T85Anulado = "S";
-					documentDB.T85NumeroDocAnul = maxNumberDocAnul + 1;
-					await UpdateT85Documento(documentDB);
-					await SaveAuditRegistries(documentDB, canceledDocument.IdUsr, "T85DOCUMENTO", canceledDocument.ComputerAud, 1);
-				}else
-				{
-					int maxNumberDoc = await MaxDocumentNumber(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc);
-					RegistryInWareHouse registryInWareHouse = new RegistryInWareHouse();
-					registryInWareHouse.CodCia = canceledDocument.CodCia;
-					registryInWareHouse.FechaActual = canceledDocument.FechaDoc;
-					registryInWareHouse.CodTipoDoc = canceledDocument.CodTipoDoc;
-					registryInWareHouse.NumeroDoc = maxNumberDoc + 1;
-					registryInWareHouse.Concepto = canceledDocument.Concepto;
-					registryInWareHouse.Anulado = "S";
-					registryInWareHouse.NumeroDocAnul = maxNumberDocAnul + 1;
-					registryInWareHouse.AppName = canceledDocument.AppName;
-					registryInWareHouse.IdUsr = canceledDocument.IdUsr;
-					registryInWareHouse.ComputerAud = canceledDocument.ComputerAud;
-					await CreateDocument(registryInWareHouse);
-				}
+					int maxNumberDocAnul = await MaxDocumentNumber(canceledDocument.CodCia, canceledDocument.FechaAnul, canceledDocument.CodTipoDocAnul);
+					T85Documento documentCanceled = await InsertDocumentCanceled(canceledDocument, maxNumberDocAnul);
+					T85Documento documentDB = await GetDocument(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc, canceledDocument.NumeroDoc);
+					if(documentDB != null)
+					{
+						documentDB.T85Anulado = "S";
+						documentDB.T85NumeroDocAnul = maxNumberDocAnul + 1;
+						await UpdateT85Documento(documentDB);
+						await SaveAuditRegistries(documentDB, canceledDocument.IdUsr, "T85DOCUMENTO", canceledDocument.ComputerAud, 1);
+					}else
+					{
+						int maxNumberDoc = await MaxDocumentNumber(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc);
+						RegistryInWareHouse registryInWareHouse = new RegistryInWareHouse();
+						registryInWareHouse.CodCia = canceledDocument.CodCia;
+						registryInWareHouse.FechaTransaccion = canceledDocument.FechaDoc;
+						registryInWareHouse.CodTipoDoc = canceledDocument.CodTipoDoc;
+						registryInWareHouse.NumeroDoc = maxNumberDoc + 1;
+						registryInWareHouse.Concepto = canceledDocument.Concepto;
+						registryInWareHouse.Anulado = "S";
+						registryInWareHouse.NumeroDocAnul = maxNumberDocAnul + 1;
+						registryInWareHouse.AppName = canceledDocument.AppName;
+						registryInWareHouse.IdUsr = canceledDocument.IdUsr;
+						registryInWareHouse.ComputerAud = canceledDocument.ComputerAud;
+						await CreateDocument(registryInWareHouse);
+					}
 
-				return documentCanceled;
+					transaction.Complete();
+					return documentCanceled;
+				}
 			}
 			else
 			{
@@ -144,7 +158,7 @@ namespace AccountingEntry.Domain.Services
 			var movementsDB = await GetMovements(canceledDocument.CodCia, canceledDocument.FechaDoc, canceledDocument.CodTipoDoc, canceledDocument.NumeroDoc);
 			RegistryInWareHouse registryInWareHouse = new RegistryInWareHouse();
 			registryInWareHouse.CodCia = canceledDocument.CodCia;
-			registryInWareHouse.FechaActual = canceledDocument.FechaAnul;
+			registryInWareHouse.FechaTransaccion = canceledDocument.FechaAnul;
 			registryInWareHouse.CodTipoDoc = canceledDocument.CodTipoDocAnul;
 			registryInWareHouse.NumeroDoc = maxNumberDocAnul + 1;
 			registryInWareHouse.Concepto = canceledDocument.ConceptoAnul;
@@ -170,7 +184,7 @@ namespace AccountingEntry.Domain.Services
 					registryInWareHouse.Nit = movement.T87Nit;
 				}
 				List<string> codCtas = movementsDB.Select(m => m.T87CodCta).ToList();
-				accounts = (List<T80Cuenta>)await GetAccounts(registryInWareHouse.CodCia, registryInWareHouse.FechaActual, codCtas);
+				accounts = (List<T80Cuenta>)await GetAccounts(registryInWareHouse.CodCia, registryInWareHouse.FechaTransaccion, codCtas);
 				await SaveMovements(registryInWareHouse);
 			}
 			T85Documento documentCanceled = await CreateDocument(registryInWareHouse);
@@ -179,10 +193,18 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<T85Documento> CreateDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
 		{
-			T85Documento document = await CreateDocument(registryInWareHouse);
-			await SaveMovements(registryInWareHouse);
-			return document;
-		}
+            TransactionOptions options = new TransactionOptions();
+            options.IsolationLevel = System.Transactions.IsolationLevel.ReadCommitted;
+			options.Timeout = TransactionManager.MaximumTimeout;
+            using (var transaction = new TransactionScope(TransactionScopeOption.Required, options, TransactionScopeAsyncFlowOption.Enabled))
+			{
+				T85Documento document = new T85Documento();
+                //T85Documento document = await CreateDocument(registryInWareHouse);
+                await SaveMovements(registryInWareHouse);
+				transaction.Complete();
+				return document;
+			}
+        }
 
 		private async Task<T85Documento> CreateDocument(RegistryInWareHouse registryInWareHouse)
 		{
@@ -195,14 +217,20 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<T85Documento> UpdateDocumentAndMovement(RegistryInWareHouse registryInWareHouse)
 		{
-			T85Documento documentUpdate = SetModelDocument(registryInWareHouse);
-			await UpdateT85Documento(documentUpdate);
-			await SaveAuditRegistries(documentUpdate, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 1);
+            TransactionOptions options = new TransactionOptions();
+            options.IsolationLevel = System.Transactions.IsolationLevel.ReadCommitted;
+            options.Timeout = TransactionManager.MaximumTimeout;
+            using (var transaction = new TransactionScope(TransactionScopeOption.Required, options, TransactionScopeAsyncFlowOption.Enabled))
+			{
+				T85Documento documentUpdate = SetModelDocument(registryInWareHouse);
+				await UpdateT85Documento(documentUpdate);
+				await SaveAuditRegistries(documentUpdate, registryInWareHouse.IdUsr, "T85DOCUMENTO", registryInWareHouse.ComputerAud, 1);
 
-			await DeleteMovementsAndTotals(registryInWareHouse);
-			await SaveMovements(registryInWareHouse);
-
-			return documentUpdate;
+				await DeleteMovementsAndTotals(registryInWareHouse);
+				await SaveMovements(registryInWareHouse);
+				transaction.Complete();
+				return documentUpdate;
+			}
 		}
 
 		private async Task<bool> SaveAuditRegistries(T85Documento document, int IdUsr, string Table, string ComputerAud, short TransAud)
@@ -217,10 +245,11 @@ namespace AccountingEntry.Domain.Services
 		private async Task<bool> SaveMovements(RegistryInWareHouse registryInWareHouse)
 		{
 			List<SetTotals> movementsByAccount = new List<SetTotals>();
+			registryInWareHouse.Cuentas = SimplyAccounts(registryInWareHouse.Cuentas);
 			foreach (var cuenta in registryInWareHouse.Cuentas)
 			{
 				var maxNumeroDoc = (int)await _t87Movimiento.Query()
-					.Where(m => m.T87CodCia.Equals(registryInWareHouse.CodCia) && m.T87Agno == (short)registryInWareHouse.FechaActual.Date.Year &&
+					.Where(m => m.T87CodCia.Equals(registryInWareHouse.CodCia) && m.T87Agno == (short)registryInWareHouse.FechaTransaccion.Date.Year &&
 						m.T87CodTipoDoc.Equals(registryInWareHouse.CodTipoDoc) && m.T87NumeroDoc == registryInWareHouse.NumeroDoc && m.T87CodCta.Equals(cuenta.CodCta))
 					.MaxAsync(m => m.T87ConsecCta);
 
@@ -242,7 +271,45 @@ namespace AccountingEntry.Domain.Services
 			return true;
 		}
 
-		private async Task<T87Movimiento> AddMovement(RegistryInWareHouse registryInWareHouse, int documentNumber, int maxNumeroDoc, Account cuenta)
+        private List<Account> SimplyAccounts(List<Account> accounts)
+		{
+			List<Account> commonAccounts = new List<Account>();
+			foreach(var account in accounts)
+			{
+				int indexAccount = commonAccounts.FindIndex(itemAccount => itemAccount.CodCta.Equals(account.CodCta) && itemAccount.Detalle.Equals(account.Detalle));
+				if(indexAccount != -1)
+				{
+					if (commonAccounts[indexAccount].ValorDebito != 0 && account.ValorDebito != 0) commonAccounts[indexAccount].ValorDebito += account.ValorDebito;
+					if(commonAccounts[indexAccount].ValorCredito != 0 && account.ValorCredito != 0) commonAccounts[indexAccount].ValorCredito += account.ValorCredito;
+
+					if(commonAccounts[indexAccount].ValorDebito != 0 && commonAccounts[indexAccount].ValorCredito == 0 && account.ValorDebito == 0 && account.ValorCredito != 0)
+					{
+						decimal ValorDebito = commonAccounts[indexAccount].ValorDebito >= account.ValorCredito ? commonAccounts[indexAccount].ValorDebito - account.ValorCredito : 0;
+						decimal ValorCredito = commonAccounts[indexAccount].ValorDebito <= account.ValorCredito ? account.ValorCredito - commonAccounts[indexAccount].ValorDebito : 0;
+						commonAccounts[indexAccount].ValorDebito = ValorDebito;
+						commonAccounts[indexAccount].ValorCredito = ValorCredito;
+
+                    }
+                    else if (commonAccounts[indexAccount].ValorDebito == 0 && commonAccounts[indexAccount].ValorCredito != 0 && account.ValorDebito != 0 && account.ValorCredito == 0)
+					{
+                        decimal ValorDebito = commonAccounts[indexAccount].ValorCredito <= account.ValorDebito ? account.ValorDebito - commonAccounts[indexAccount].ValorCredito : 0;
+                        decimal ValorCredito = commonAccounts[indexAccount].ValorCredito >= account.ValorDebito ? commonAccounts[indexAccount].ValorCredito - account.ValorDebito : 0;
+                        commonAccounts[indexAccount].ValorDebito = ValorDebito;
+                        commonAccounts[indexAccount].ValorCredito = ValorCredito;
+                    }
+
+					if (commonAccounts[indexAccount].ValorDebito == 0 && commonAccounts[indexAccount].ValorCredito == 0) commonAccounts.RemoveAt(indexAccount);
+                }
+                else
+				{
+					commonAccounts.Add(account);
+				}
+			}
+
+			return commonAccounts;
+		}
+
+        private async Task<T87Movimiento> AddMovement(RegistryInWareHouse registryInWareHouse, int documentNumber, int maxNumeroDoc, Account cuenta)
 		{
 			T87Movimiento movement = SetModelMovement(registryInWareHouse, documentNumber, maxNumeroDoc, cuenta);
 			await _t87Movimiento.Add(movement);
@@ -254,15 +321,17 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<bool> UpdateT85Documento(T85Documento documentUpdate)
 		{
-			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-			sqlParametersExtend.Add(new SqlParameter("@CodCia", documentUpdate.T85CodCia));
-			sqlParametersExtend.Add(new SqlParameter("@Agno", documentUpdate.T85Agno));
-			sqlParametersExtend.Add(new SqlParameter("@CodTipoDoc", documentUpdate.T85CodTipoDoc));
-			sqlParametersExtend.Add(new SqlParameter("@NumeroDoc", documentUpdate.T85NumeroDoc));
-			sqlParametersExtend.Add(new SqlParameter("@Fecha", documentUpdate.T85Fecha));
-			sqlParametersExtend.Add(new SqlParameter("@Concepto", documentUpdate.T85Concepto));
-			sqlParametersExtend.Add(new SqlParameter("@Anulado", documentUpdate.T85Anulado));
-			sqlParametersExtend.Add(new SqlParameter("@NumeroDocAnul", documentUpdate.T85NumeroDocAnul));
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+			{
+				new SqlParameter("@CodCia", documentUpdate.T85CodCia),
+				new SqlParameter("@Agno", documentUpdate.T85Agno),
+				new SqlParameter("@CodTipoDoc", documentUpdate.T85CodTipoDoc),
+				new SqlParameter("@NumeroDoc", documentUpdate.T85NumeroDoc),
+				new SqlParameter("@Fecha", documentUpdate.T85Fecha),
+				new SqlParameter("@Concepto", documentUpdate.T85Concepto),
+				new SqlParameter("@Anulado", documentUpdate.T85Anulado),
+				new SqlParameter("@NumeroDocAnul", documentUpdate.T85NumeroDocAnul)
+			};
 			var updateString = "UPDATE [PIMISYS].[dbo].[T85DOCUMENTO] SET T85Agno = @Agno, T85Fecha = @Fecha, T85Concepto = @Concepto, T85Anulado = @Anulado, T85NumeroDocAnul = @NumeroDocAnul WHERE T85CodCia = @CodCia AND T85Agno = @Agno AND T85CodTipoDoc = @CodTipoDoc AND T85NumeroDoc = @NumeroDoc";
 			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 			return true;
@@ -270,25 +339,27 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task DeleteDocument(RegistryInWareHouse registryInWareHouse)
 		{
-			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-			sqlParametersExtend.Add(new SqlParameter("@CodCia", registryInWareHouse.CodCia));
-			sqlParametersExtend.Add(new SqlParameter("@Agno", registryInWareHouse.FechaActual.Date.Year));
-			sqlParametersExtend.Add(new SqlParameter("@CodTipoDoc", registryInWareHouse.CodTipoDoc));
-			sqlParametersExtend.Add(new SqlParameter("@NumeroDoc", registryInWareHouse.NumeroDoc));
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+			{
+				new SqlParameter("@CodCia", registryInWareHouse.CodCia),
+				new SqlParameter("@Agno", registryInWareHouse.FechaTransaccion.Date.Year),
+				new SqlParameter("@CodTipoDoc", registryInWareHouse.CodTipoDoc),
+				new SqlParameter("@NumeroDoc", registryInWareHouse.NumeroDoc)
+			};
 			var updateString = "DELETE FROM [PIMISYS].[dbo].[T85DOCUMENTO] WHERE T85CodCia = @CodCia AND T85Agno = @Agno AND T85CodTipoDoc = @CodTipoDoc AND T85NumeroDoc = @NumeroDoc";
 			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 		}
 
 		private async Task DeleteMovementsAndTotals(RegistryInWareHouse registryInWareHouse)
 		{
-			var movementsInDb = await GetMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
+			var movementsInDb = await GetMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaTransaccion, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
 			if (movementsInDb.Count() > 0)
 			{
 				List<string> codCtas = movementsInDb.Select(m => m.T87CodCta).ToList();
-				var accountsForMovements = await GetAccounts(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior, codCtas);
+				var accountsForMovements = await GetAccounts(registryInWareHouse.CodCia, registryInWareHouse.FechaTransaccion, codCtas);
 				var listCounts = accountsForMovements.Concat(accounts);
 				accounts = listCounts.GroupBy(car => car.T80CodCta).Select(g => g.First()).ToList();
-				await DeleteMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaAnterior.Date.Year, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
+				await DeleteMovements(registryInWareHouse.CodCia, registryInWareHouse.FechaTransaccion.Date.Year, registryInWareHouse.CodTipoDoc, registryInWareHouse.NumeroDoc);
 
 				List<SetTotals> movementsByAccount = movementsInDb.Select(m => new SetTotals { Movement = m, CodCta = m.T87CodCta }).ToList();
 				await SaveTotals(registryInWareHouse, movementsByAccount, true);
@@ -297,11 +368,13 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task<bool> DeleteMovements(string codCia, int agno, string codTipoDoc, int numeroDoc)
 		{
-			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-			sqlParametersExtend.Add(new SqlParameter("@CodCia", codCia));
-			sqlParametersExtend.Add(new SqlParameter("@Agno", agno));
-			sqlParametersExtend.Add(new SqlParameter("@CodTipoDoc", codTipoDoc));
-			sqlParametersExtend.Add(new SqlParameter("@NumeroDoc", numeroDoc));
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+			{
+				new SqlParameter("@CodCia", codCia),
+				new SqlParameter("@Agno", agno),
+				new SqlParameter("@CodTipoDoc", codTipoDoc),
+				new SqlParameter("@NumeroDoc", numeroDoc)
+			};
 			var updateString = "DELETE FROM [PIMISYS].[dbo].[T87MOVIMIENTO] WHERE T87CodCia = @CodCia AND T87Agno = @Agno AND T87CodTipoDoc = @CodTipoDoc AND T87NumeroDoc = @NumeroDoc";
 			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 			return true;
@@ -311,7 +384,7 @@ namespace AccountingEntry.Domain.Services
 		{
 			foreach(var movementByAccount in movementsByAccount)
 			{
-				DateTime fecha = isSubtract ? registryInWareHouse.FechaAnterior : registryInWareHouse.FechaActual;
+				DateTime fecha = isSubtract ? registryInWareHouse.FechaDoc : registryInWareHouse.FechaTransaccion;
 				await SaveTotalAccount(registryInWareHouse, movementByAccount.Movement, movementByAccount.CodCta, isSubtract, fecha);
 
 				T80Cuenta account = accounts.Find(acc => acc.T80CodCta == movementByAccount.CodCta);
@@ -341,10 +414,12 @@ namespace AccountingEntry.Domain.Services
 			}
 			else
 			{
-				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-				sqlParametersExtend.Add(new SqlParameter("@CodCia", totalAccount.T88CodCia));
-				sqlParametersExtend.Add(new SqlParameter("@Agno", totalAccount.T88Agno));
-				sqlParametersExtend.Add(new SqlParameter("@CodCta", totalAccount.T88CodCta));
+				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+				{
+					new SqlParameter("@CodCia", totalAccount.T88CodCia),
+					new SqlParameter("@Agno", totalAccount.T88Agno),
+					new SqlParameter("@CodCta", totalAccount.T88CodCta)
+				};
 				var insertString = "INSERT INTO T88TOTALCUENTA(T88CodCia,T88Agno,T88CodCta,T88Mes,T88MovDebitoLocal,T88MovCreditoLocal,T88MovDebitoNIIF,T88MovCreditoNIIF)" +
 					"SELECT @CodCia, @Agno, @CodCta, S08Mes,0.00,0.00,0.00,0.00 FROM S08MES WHERE S08TotalesPYG = 'S'";
 				await _unitOfWork.ExecuteSqlRawAsync(insertString, sqlParametersExtend);
@@ -370,11 +445,13 @@ namespace AccountingEntry.Domain.Services
 			}
 			else
 			{
-				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-				sqlParametersExtend.Add(new SqlParameter("@CodCia", totalCostCenter.T89CodCia));
-				sqlParametersExtend.Add(new SqlParameter("@Agno", totalCostCenter.T89Agno));
-				sqlParametersExtend.Add(new SqlParameter("@CodCta", totalCostCenter.T89CodCta));
-				sqlParametersExtend.Add(new SqlParameter("@CodCentro", totalCostCenter.T89CodCentro));
+				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+				{
+					new SqlParameter("@CodCia", totalCostCenter.T89CodCia),
+					new SqlParameter("@Agno", totalCostCenter.T89Agno),
+					new SqlParameter("@CodCta", totalCostCenter.T89CodCta),
+					new SqlParameter("@CodCentro", totalCostCenter.T89CodCentro)
+				};
 				var insertString = "INSERT INTO T89TOTALCENTROCOSTO(T89CodCia,T89Agno,T89CodCta,T89CodCentro,T89Mes,T89MovDebitoLocal,T89MovCreditoLocal,T89MovDebitoNIIF,T89MovCreditoNIIF)" +
 					"SELECT @CodCia, @Agno, @CodCta, @CodCentro,S08Mes,0.00,0.00,0.00,0.00 FROM S08MES WHERE S08TotalesPYG = 'S'";
 				await _unitOfWork.ExecuteSqlRawAsync(insertString, sqlParametersExtend);
@@ -400,11 +477,13 @@ namespace AccountingEntry.Domain.Services
 			}
 			else
 			{
-				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-				sqlParametersExtend.Add(new SqlParameter("@CodCia", totalPerson.T90CodCia));
-				sqlParametersExtend.Add(new SqlParameter("@Agno", totalPerson.T90Agno));
-				sqlParametersExtend.Add(new SqlParameter("@CodCta", totalPerson.T90CodCta));
-				sqlParametersExtend.Add(new SqlParameter("@Nit", totalPerson.T90Nit));
+				List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+				{
+					new SqlParameter("@CodCia", totalPerson.T90CodCia),
+					new SqlParameter("@Agno", totalPerson.T90Agno),
+					new SqlParameter("@CodCta", totalPerson.T90CodCta),
+					new SqlParameter("@Nit", totalPerson.T90Nit)
+				};
 				var insertString = "INSERT INTO T90TOTALTERCERO(T90CodCia,T90Agno,T90CodCta,T90Nit,T90Mes,T90MovDebitoLocal,T90MovCreditoLocal,T90MovDebitoNIIF,T90MovCreditoNIIF)" +
 					"SELECT @CodCia, @Agno, @CodCta, @Nit,S08Mes,0.00,0.00,0.00,0.00 FROM S08MES WHERE S08TotalesPYG = 'S'";
 				await _unitOfWork.ExecuteSqlRawAsync(insertString, sqlParametersExtend);
@@ -418,47 +497,53 @@ namespace AccountingEntry.Domain.Services
 
 		private async Task UpdateT88TotalCuenta(T88TotalCuenta totalAccount)
 		{
-			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-			sqlParametersExtend.Add(new SqlParameter("@T88MovDebitoLocal", totalAccount.T88MovDebitoLocal));
-			sqlParametersExtend.Add(new SqlParameter("@T88MovCreditoLocal", totalAccount.T88MovCreditoLocal));
-			sqlParametersExtend.Add(new SqlParameter("@T88MovDebitoNIIF", totalAccount.T88MovDebitoNIIF));
-			sqlParametersExtend.Add(new SqlParameter("@T88MovCreditoNIIF", totalAccount.T88MovCreditoNIIF));
-			sqlParametersExtend.Add(new SqlParameter("@CodCia", totalAccount.T88CodCia));
-			sqlParametersExtend.Add(new SqlParameter("@Agno", totalAccount.T88Agno));
-			sqlParametersExtend.Add(new SqlParameter("@CodCta", totalAccount.T88CodCta));
-			sqlParametersExtend.Add(new SqlParameter("@Mes", totalAccount.T88Mes));
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+			{
+				new SqlParameter("@T88MovDebitoLocal", totalAccount.T88MovDebitoLocal),
+				new SqlParameter("@T88MovCreditoLocal", totalAccount.T88MovCreditoLocal),
+				new SqlParameter("@T88MovDebitoNIIF", totalAccount.T88MovDebitoNIIF),
+				new SqlParameter("@T88MovCreditoNIIF", totalAccount.T88MovCreditoNIIF),
+				new SqlParameter("@CodCia", totalAccount.T88CodCia),
+				new SqlParameter("@Agno", totalAccount.T88Agno),
+				new SqlParameter("@CodCta", totalAccount.T88CodCta),
+				new SqlParameter("@Mes", totalAccount.T88Mes)
+			};
 			var updateString = "UPDATE [PIMISYS].[dbo].[T88TOTALCUENTA] SET T88MovDebitoLocal = @T88MovDebitoLocal, T88MovCreditoLocal = @T88MovCreditoLocal, T88MovDebitoNIIF = @T88MovDebitoNIIF, T88MovCreditoNIIF = @T88MovCreditoNIIF WHERE T88CodCia = @CodCia AND T88Agno = @Agno AND T88CodCta = @CodCta AND T88Mes = @Mes";
 			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 		}
 
 		private async Task UpdateT89TotalCentroCosto(T89TotalCentroCosto totalCostCenter)
 		{
-			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-			sqlParametersExtend.Add(new SqlParameter("@T89MovDebitoLocal", totalCostCenter.T89MovDebitoLocal));
-			sqlParametersExtend.Add(new SqlParameter("@T89MovCreditoLocal", totalCostCenter.T89MovCreditoLocal));
-			sqlParametersExtend.Add(new SqlParameter("@T89MovDebitoNIIF", totalCostCenter.T89MovDebitoNIIF));
-			sqlParametersExtend.Add(new SqlParameter("@T89MovCreditoNIIF", totalCostCenter.T89MovCreditoNIIF));
-			sqlParametersExtend.Add(new SqlParameter("@CodCia", totalCostCenter.T89CodCia));
-			sqlParametersExtend.Add(new SqlParameter("@Agno", totalCostCenter.T89Agno));
-			sqlParametersExtend.Add(new SqlParameter("@CodCta", totalCostCenter.T89CodCta));
-			sqlParametersExtend.Add(new SqlParameter("@CodCentro", totalCostCenter.T89CodCentro));
-			sqlParametersExtend.Add(new SqlParameter("@Mes", totalCostCenter.T89Mes));
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+			{
+				new SqlParameter("@T89MovDebitoLocal", totalCostCenter.T89MovDebitoLocal),
+				new SqlParameter("@T89MovCreditoLocal", totalCostCenter.T89MovCreditoLocal),
+				new SqlParameter("@T89MovDebitoNIIF", totalCostCenter.T89MovDebitoNIIF),
+				new SqlParameter("@T89MovCreditoNIIF", totalCostCenter.T89MovCreditoNIIF),
+				new SqlParameter("@CodCia", totalCostCenter.T89CodCia),
+				new SqlParameter("@Agno", totalCostCenter.T89Agno),
+				new SqlParameter("@CodCta", totalCostCenter.T89CodCta),
+				new SqlParameter("@CodCentro", totalCostCenter.T89CodCentro),
+				new SqlParameter("@Mes", totalCostCenter.T89Mes)
+			};
 			var updateString = "UPDATE [PIMISYS].[dbo].[T89TOTALCENTROCOSTO] SET T89MovDebitoLocal = @T89MovDebitoLocal, T89MovCreditoLocal = @T89MovCreditoLocal, T89MovDebitoNIIF = @T89MovDebitoNIIF, T89MovCreditoNIIF = @T89MovCreditoNIIF WHERE T89CodCia = @CodCia AND T89Agno = @Agno AND T89CodCta = @CodCta AND T89CodCentro = @CodCentro AND T89Mes = @Mes";
 			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 		}
 
 		private async Task UpdateT90TotalTercero(T90TotalTercero totalPerson)
 		{
-			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>();
-			sqlParametersExtend.Add(new SqlParameter("@T90MovDebitoLocal", totalPerson.T90MovDebitoLocal));
-			sqlParametersExtend.Add(new SqlParameter("@T90MovCreditoLocal", totalPerson.T90MovCreditoLocal));
-			sqlParametersExtend.Add(new SqlParameter("@T90MovDebitoNIIF", totalPerson.T90MovDebitoNIIF));
-			sqlParametersExtend.Add(new SqlParameter("@T90MovCreditoNIIF", totalPerson.T90MovCreditoNIIF));
-			sqlParametersExtend.Add(new SqlParameter("@CodCia", totalPerson.T90CodCia));
-			sqlParametersExtend.Add(new SqlParameter("@Agno", totalPerson.T90Agno));
-			sqlParametersExtend.Add(new SqlParameter("@CodCta", totalPerson.T90CodCta));
-			sqlParametersExtend.Add(new SqlParameter("@Nit", totalPerson.T90Nit));
-			sqlParametersExtend.Add(new SqlParameter("@Mes", totalPerson.T90Mes));
+			List<SqlParameter> sqlParametersExtend = new List<SqlParameter>
+			{
+				new SqlParameter("@T90MovDebitoLocal", totalPerson.T90MovDebitoLocal),
+				new SqlParameter("@T90MovCreditoLocal", totalPerson.T90MovCreditoLocal),
+				new SqlParameter("@T90MovDebitoNIIF", totalPerson.T90MovDebitoNIIF),
+				new SqlParameter("@T90MovCreditoNIIF", totalPerson.T90MovCreditoNIIF),
+				new SqlParameter("@CodCia", totalPerson.T90CodCia),
+				new SqlParameter("@Agno", totalPerson.T90Agno),
+				new SqlParameter("@CodCta", totalPerson.T90CodCta),
+				new SqlParameter("@Nit", totalPerson.T90Nit),
+				new SqlParameter("@Mes", totalPerson.T90Mes)
+			};
 			var updateString = "UPDATE [PIMISYS].[dbo].[T90TOTALTERCERO] SET T90MovDebitoLocal = @T90MovDebitoLocal, T90MovCreditoLocal = @T90MovCreditoLocal, T90MovDebitoNIIF = @T90MovDebitoNIIF, T90MovCreditoNIIF = @T90MovCreditoNIIF WHERE T90CodCia = @CodCia AND T90Agno = @Agno AND T90CodCta = @CodCta AND T90Nit = @Nit AND T90Mes = @Mes";
 			await _unitOfWork.ExecuteSqlRawAsync(updateString, sqlParametersExtend);
 		}
@@ -511,7 +596,7 @@ namespace AccountingEntry.Domain.Services
 					messageTransaction = await ValidateApplicationName(registryInWareHouse.AppName); // Preguntar si este dato es necesario validarlo
 					if (messageTransaction == "OK")
 					{
-						messageTransaction = await ValidatePeriodLock(registryInWareHouse.CodCia, registryInWareHouse.FechaActual.Date, registryInWareHouse.FechaAnterior.Date);
+						messageTransaction = await ValidatePeriodLock(registryInWareHouse.CodCia, registryInWareHouse.FechaTransaccion.Date, registryInWareHouse.FechaDoc.Date);
 						{
 							messageTransaction = await ValidateDocumentTypeCode(registryInWareHouse.CodTipoDoc, registryInWareHouse.CodCia);
 							if (messageTransaction == "OK")
@@ -541,7 +626,7 @@ namespace AccountingEntry.Domain.Services
 					messageTransaction = await ValidateApplicationName(canceledDocument.AppName);
 					if (messageTransaction == "OK")
 					{
-						messageTransaction = await ValidatePeriodLock(canceledDocument.CodCia, canceledDocument.FechaAnul.Date, canceledDocument.FechaDoc.Date);
+                        messageTransaction = await ValidatePeriodLock(canceledDocument.CodCia, canceledDocument.FechaAnul.Date, new DateTime().Date);
 						if (messageTransaction == "OK")
 						{
 							for(int i = 0; i < 2; i++)
@@ -575,9 +660,11 @@ namespace AccountingEntry.Domain.Services
 		}
 		private async Task<string> ValidatePeriodLock(string CodCia, DateTime FechaActual, DateTime FechaAnterior)
 		{
-			List<DateTime> listDates = new List<DateTime>();
-			listDates.Add(FechaActual);
-			if (FechaAnterior != null && !FechaAnterior.Equals(Activator.CreateInstance(typeof(DateTime))) && FechaAnterior != FechaActual) listDates.Add(FechaAnterior);
+			List<DateTime> listDates = new List<DateTime>
+			{
+				FechaActual
+			};
+			if (!FechaAnterior.Equals(Activator.CreateInstance(typeof(DateTime))) && FechaAnterior != FechaActual) listDates.Add(FechaAnterior);
 			string message = "";
 			for(int i = 0; i < listDates.Count; i++) {
 				string mes = listDates[i].Month < 10 ? '0' + listDates[i].Month.ToString() : listDates[i].Month.ToString();
@@ -606,7 +693,7 @@ namespace AccountingEntry.Domain.Services
 				if(!accounts.Exists(ac => ac.T80CodCta.Equals(cuenta.CodCta)))
 				{
 					T80Cuenta account = await _t80CuentaRepository.Query().FirstOrDefaultAsync(c => c.T80CodCta.Equals(cuenta.CodCta) &&
-					c.T80CodCia.Equals(registryInWareHouse.CodCia) && c.T80Agno == registryInWareHouse.FechaActual.Date.Year);
+					c.T80CodCia.Equals(registryInWareHouse.CodCia) && c.T80Agno == registryInWareHouse.FechaTransaccion.Date.Year);
 					if (account != null)
 					{
 						if (account.T80Movimiento.Equals("S"))
@@ -681,7 +768,7 @@ namespace AccountingEntry.Domain.Services
 		{
 			string fieldNames = "";
 			fieldNames = registryInWareHouse.CodCia == null ? fieldNames + "CodCia" : fieldNames;
-			fieldNames = registryInWareHouse.FechaActual == null || registryInWareHouse.FechaActual.Equals(Activator.CreateInstance(typeof(DateTime))) ?
+			fieldNames = registryInWareHouse.FechaTransaccion.Equals(Activator.CreateInstance(typeof(DateTime))) ?
 				fieldNames + ", Fecha" : fieldNames;
 			fieldNames = registryInWareHouse.CodTipoDoc == null ? fieldNames + ", CodTipoDoc" : fieldNames;
 			fieldNames = registryInWareHouse.NumeroDoc == 0 ? fieldNames + ", NumeroDoc" : fieldNames;
@@ -689,7 +776,7 @@ namespace AccountingEntry.Domain.Services
 			fieldNames = registryInWareHouse.ComputerAud == null ? fieldNames + ", ComputerAud" : fieldNames;
 			if(callCreateOrUpdate)
 			{
-				fieldNames = !isCreate && (registryInWareHouse.FechaAnterior == null || registryInWareHouse.FechaAnterior.Equals(Activator.CreateInstance(typeof(DateTime)))) ?
+				fieldNames = !isCreate && (registryInWareHouse.FechaDoc.Equals(Activator.CreateInstance(typeof(DateTime)))) ?
 					fieldNames + "FechaAnterior" : fieldNames;
 				fieldNames = registryInWareHouse.Concepto == null ? fieldNames + ", Concepto" : fieldNames;
 				fieldNames = registryInWareHouse.Cuentas == null ? fieldNames + ", Cuentas" : validateFieldsCountsRequired(registryInWareHouse.Cuentas, fieldNames);
@@ -702,9 +789,9 @@ namespace AccountingEntry.Domain.Services
 		{
 			string fieldNames = "";
 			fieldNames = canceledDocument.CodCia == null ? fieldNames + "CodCia" : fieldNames;
-			fieldNames = canceledDocument.FechaDoc == null || canceledDocument.FechaDoc.Equals(Activator.CreateInstance(typeof(DateTime))) ?
+			fieldNames = canceledDocument.FechaDoc.Equals(Activator.CreateInstance(typeof(DateTime))) ?
 				fieldNames + ", FechaDoc" : fieldNames;
-			fieldNames = canceledDocument.FechaAnul == null || canceledDocument.FechaAnul.Equals(Activator.CreateInstance(typeof(DateTime))) ?
+			fieldNames = canceledDocument.FechaAnul.Equals(Activator.CreateInstance(typeof(DateTime))) ?
 				fieldNames + ", FechaAnul" : fieldNames;
 			fieldNames = canceledDocument.CodTipoDoc == null ? fieldNames + ", CodTipoDoc" : fieldNames;
 			fieldNames = canceledDocument.CodTipoDocAnul == null ? fieldNames + ", CodTipoDocAnul" : fieldNames;
@@ -738,10 +825,10 @@ namespace AccountingEntry.Domain.Services
 		{
 			T85Documento document = new T85Documento();
 			document.T85CodCia = registryInWareHouse.CodCia;
-			document.T85Agno = (short)registryInWareHouse.FechaActual.Date.Year;
+			document.T85Agno = (short)registryInWareHouse.FechaTransaccion.Date.Year;
 			document.T85CodTipoDoc = registryInWareHouse.CodTipoDoc;
 			document.T85NumeroDoc = registryInWareHouse.NumeroDoc;
-			document.T85Fecha = registryInWareHouse.FechaActual;
+			document.T85Fecha = registryInWareHouse.FechaTransaccion;
 			document.T85Concepto = registryInWareHouse.Concepto;
 			document.T85Anulado = registryInWareHouse.Anulado != null ? registryInWareHouse.Anulado : "N";
 			document.T85AppName = registryInWareHouse.AppName;
@@ -760,12 +847,12 @@ namespace AccountingEntry.Domain.Services
 			T80Cuenta accountObject = accounts.FirstOrDefault(ac => ac.T80CodCta.Equals(account.CodCta));
 			T87Movimiento movement = new T87Movimiento();
 			movement.T87CodCia = registryInWareHouse.CodCia;
-			movement.T87Agno = (short)registryInWareHouse.FechaActual.Date.Year;
+			movement.T87Agno = (short)registryInWareHouse.FechaTransaccion.Date.Year;
 			movement.T87CodTipoDoc = registryInWareHouse.CodTipoDoc;
 			movement.T87NumeroDoc = documentNumber;
 			movement.T87CodCta = account.CodCta;
 			movement.T87ConsecCta = lastConsecCta + 1;
-			movement.T87Fecha = registryInWareHouse.FechaActual;
+			movement.T87Fecha = registryInWareHouse.FechaTransaccion;
 			movement.T87CodCentro = accountObject.T80CentroCosto.Equals("S") ? registryInWareHouse.CodCentro : "";
 			movement.T87Nit = accountObject.T80Tercero.Equals("S") ? registryInWareHouse.Nit : "";
 			movement.T87Referencia = registryInWareHouse.ReferenciaMov != null ? registryInWareHouse.ReferenciaMov : "";
@@ -843,7 +930,7 @@ namespace AccountingEntry.Domain.Services
 			audit.TablaAud = TablaAud;
 			audit.TransAud = TransAud;
 			audit.DescAud = document.T85CodCia + ":" + document.T85Agno + ":" + document.T85CodTipoDoc + ":" + document.T85NumeroDoc + ":" + 
-				document.T85Fecha.ToString("dd/M/yyyy") + ":" + document.T85Anulado + ":" + document.T85AppName + ":" + concepto +
+				document.T85Fecha.ToString("dd/MM/yyyy") + ":" + document.T85Anulado + ":" + document.T85AppName + ":" + concepto +
 				":" + ":" + document.T85NumeroDocAnul;
 			audit.ComputerAud = ComputerAud;
 
