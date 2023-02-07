@@ -8,7 +8,7 @@ namespace AccountingEntry.API.BindingModel
 	public class DeleteDocumentRequest
 	{
 		public string CodCia { get; set; }
-		public DateTime FechaTransaccion { get; set; } //FechaActual
+		public DateTime FechaNueva { get; set; } //FechaActual
         public string CodTipoDoc { get; set; }
 		public int NumeroDoc { get; set; }
 		public string AppName { get; set; }

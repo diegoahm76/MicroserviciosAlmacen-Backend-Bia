@@ -7,8 +7,8 @@ namespace AccountingEntry.Domain.Model.ModelQuery
 	{
 		//Propiedades comunes en varias tablas
 		public string CodCia { get; set; }
-		public DateTime FechaTransaccion { get; set; } //FechaActual
-		public DateTime FechaDoc { get; set; } //FechaAnterior
+		public DateTime FechaNueva { get; set; } //FechaActual
+		public DateTime FechaAnterior { get; set; } //FechaAnterior
         public string CodCentro { get; set; }
 		public string Nit { get; set; }
 		public string CodTipoDoc { get; set; }
